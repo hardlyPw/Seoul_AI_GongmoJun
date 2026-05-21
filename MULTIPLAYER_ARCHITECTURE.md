@@ -553,13 +553,29 @@ git checkout -b multi/your-game     # 자기 미니게임 이름으로
 - ✅ DefaultNetworkPrefabs 등록 정보
 - ✅ Tag/Layer 정의 (Ground, Player 등)
 - ✅ Project Settings 전반
+- ✅ **Unity 패키지** (NGO, Multiplayer Services, TMP, URP 등) - 자동 설치
 
 > Asset Serialization Mode = Force Text 모드라 모든 Unity 데이터가 텍스트로 저장됨.
 
+#### Unity 패키지 자동 설치 동작
+
+`Project-Seoul/Packages/manifest.json` + `packages-lock.json`이 git에 포함되어 있어서:
+1. git pull 후 Unity로 프로젝트 처음 열면 "Hold on... Importing assets" 진행바 뜸
+2. Unity가 manifest.json 읽고 필요한 패키지를 자동 다운로드 (Library/PackageCache/에 캐시)
+3. 첫 import는 1~5분 소요 (이후는 즉시)
+
+**Package Manager 들어가서 NGO, Lobby, Relay 등을 일일이 설치할 필요 X.** 이미 manifest에 적혀있음.
+
+만약 패키지 import가 막히면:
+- `Project-Seoul/Library/` 폴더 삭제 후 Unity 재실행 → 캐시 재생성
+- Window → Package Manager에서 강제 새로고침
+
 **받지 못하는 것 (개인이 설정 필요):**
-- ❌ UGS 프로젝트 연결 (Editor → Project Settings → Services)
-- ❌ Unity 로그인 (Editor 계정)
-- ❌ Editor Layout, 개인 설정
+- ❌ UGS 프로젝트 연결 (Editor → Project Settings → Services → Link to Unity Project ID)
+- ❌ Unity Editor 로그인 (우상단 클라우드 아이콘)
+- ❌ Editor Layout, Theme 등 개인 환경 설정
+
+> UGS 프로젝트 연결: 팀에서 만든 UGS 프로젝트의 owner가 본인 이메일을 멤버로 초대해주면 자동 연결됨. 또는 자기만의 UGS 프로젝트로 새로 연결.
 
 ### 15.3 새 미니게임 씬 셋업
 
