@@ -511,3 +511,194 @@ public class ConnectionApprovalHandler : MonoBehaviour {
 - **아이템/기믹 복원**: 객체별 권위 모델 별도 설계
 - **안티치트 강화**: 위치 검증, 강퇴/밴
 - **리플레이 / 관전**: 서버 측 입력 기록
+
+---
+
+## 15. 팀 협업 가이드 (새 미니게임 추가)
+
+새 미니게임(러닝 외 자전거, 퀴즈, 미니배틀 등)을 추가하려는 팀원용 가이드.
+
+### 15.1 Branch 전략
+
+```
+main                        ← 안정 stable
+└── multi-base              ← 멀티 인프라 integration (모든 미니게임의 공통 base)
+    ├── multi/race-run      ← 러닝 게임 (이미 작업 중)
+    ├── multi/your-game     ← 새 미니게임은 여기서 분기
+    └── multi/...
+```
+
+#### 시작 절차
+
+```bash
+git fetch origin
+git checkout multi-base
+git pull origin multi-base
+git checkout -b multi/your-game     # 자기 미니게임 이름으로
+```
+
+#### 완료 후
+
+- `multi/your-game` → `multi-base`로 PR
+- 리뷰 후 merge
+- 다른 팀원은 `git pull origin multi-base`로 동기화
+
+### 15.2 git에서 받는 것 / 받지 못하는 것
+
+**git pull로 자동으로 받는 것 (셋업 불필요):**
+- ✅ 모든 씬 파일 (`.unity`) - Hierarchy + Inspector 값 전부
+- ✅ Player Prefab + 모든 컴포넌트 설정
+- ✅ NetworkManager 설정, ConnectionApproval 등
+- ✅ Build Settings에 등록된 씬 목록
+- ✅ DefaultNetworkPrefabs 등록 정보
+- ✅ Tag/Layer 정의 (Ground, Player 등)
+- ✅ Project Settings 전반
+
+> Asset Serialization Mode = Force Text 모드라 모든 Unity 데이터가 텍스트로 저장됨.
+
+**받지 못하는 것 (개인이 설정 필요):**
+- ❌ UGS 프로젝트 연결 (Editor → Project Settings → Services)
+- ❌ Unity 로그인 (Editor 계정)
+- ❌ Editor Layout, 개인 설정
+
+### 15.3 새 미니게임 씬 셋업
+
+#### 씬 생성
+
+위치: `Project-Seoul/Assets/_Project/Scenes/`
+이름 컨벤션: **`NN_GameName.unity`** (NN: 05~99 사용)
+- 예: `05_Bike.unity`, `06_Quiz.unity`, `07_Battle.unity`
+
+#### 필수 Hierarchy
+
+```
+NN_YourGame
+├── Main Camera               (필요시 CameraFollow 추가)
+├── Directional Light
+├── Plane / Ground            (콜라이더 + Layer=Ground)
+├── (게임별 GameObject들)
+└── NetworkYourGameManager    (Empty GameObject)
+     ├── NetworkObject        ← NGO 인식용
+     └── NetworkYourGameManager (Script)
+```
+
+> NetworkManager는 00_Bootstrap에서 DontDestroyOnLoad라 자동으로 따라옵니다. 새 씬에 추가할 필요 X.
+
+#### 게임 매니저 패턴
+
+`NetworkRaceManager`를 참고하세요. 핵심 패턴:
+
+```csharp
+public class NetworkYourGameManager : NetworkBehaviour
+{
+    public override void OnNetworkSpawn()
+    {
+        if (!IsServer) return;
+
+        // 중요: 즉시 Player spawn 금지. 모든 클라 로드 완료까지 대기.
+        NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += OnSceneLoaded;
+    }
+
+    private void OnSceneLoaded(string sceneName, LoadSceneMode mode,
+                                List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
+    {
+        if (sceneName != gameObject.scene.name) return;
+
+        foreach (var clientId in clientsCompleted)
+        {
+            SpawnPlayerForClient(clientId);
+        }
+    }
+
+    private void SpawnPlayerForClient(ulong clientId)
+    {
+        var prefab = NetworkManager.Singleton.NetworkConfig.PlayerPrefab;
+        // ...자기 게임 위치에 맞춰 spawn
+        var go = Instantiate(prefab, spawnPos, Quaternion.identity);
+        go.GetComponent<NetworkObject>().SpawnAsPlayerObject(clientId, true);
+    }
+}
+```
+
+> **OnNetworkSpawn에서 즉시 SpawnAsPlayerObject 호출하면 클라이언트가 잘못된 씬에 spawn받음.** 반드시 `OnLoadEventCompleted` 사용.
+
+### 15.4 코드 컨벤션
+
+| 영역 | 위치 / 네임스페이스 |
+|---|---|
+| 멀티 공통 (Bootstrap, Lobby) | `Assets/Scripts/Network/` / `Seoul.Network.*` |
+| 게임 매니저 (NetworkXxxManager) | `Assets/Scripts/Network/Game/` / `Seoul.Network.Game` |
+| 게임별 로직 (Player 외) | `Assets/Scripts/<YourGame>/` / 자유 |
+| 입력 추상화 | 기존 `IInputProvider` 활용 (필요시 확장) |
+
+### 15.5 Lobby에서 자기 게임으로 진입
+
+현재 `LobbyRoomController.OnStartClicked()`가 `"03_Race"`로 하드코딩되어 있어요.
+다중 미니게임 지원하려면 **둘 중 선택**:
+
+**옵션 A: GameSelector UI 추가**
+- 02_LobbyRoom에 게임 선택 드롭다운/버튼 추가
+- 호스트가 선택한 게임으로 `NetworkManager.Singleton.SceneManager.LoadScene(selectedScene, ...)`
+
+**옵션 B: 임시로 자기 씬을 직접 호출**
+- 작업 중에는 `LobbyRoomController.raceSceneName`을 자기 씬으로 변경하고 commit하지 말 것
+- 또는 디버그 빌드로 자기 씬에서 직접 Play
+
+**최종 통합 시점**: A 옵션을 multi-base에 적용하고 모든 게임이 거기 등록.
+
+### 15.6 Build Settings 등록
+
+```
+File → Build Profiles → Scene List
+   ↓
+드래그로 자기 씬 추가 (NN_YourGame.unity)
+```
+
+> Build Settings는 `ProjectSettings/EditorBuildSettings.asset`에 저장되어 git에 올라감.
+> 여러 명이 동시에 씬 추가하면 merge conflict 발생 가능. PR 시점에 한 명씩 추가 권장.
+
+### 15.7 DefaultNetworkPrefabs 등록
+
+자기 게임에서 동적 spawn할 NetworkObject 프리팹이 있다면:
+
+```
+Assets/DefaultNetworkPrefabs.asset 더블클릭
+   ↓
++ 버튼 → 프리팹 드래그
+```
+
+> 이 파일도 git에 올라감. Merge conflict 주의.
+
+### 15.8 협업 체크리스트
+
+작업 시작 전:
+- [ ] `git pull origin multi-base` 최신 상태 확인
+- [ ] `multi/your-game` branch 생성
+- [ ] Unity Editor에서 UGS 프로젝트 연결 확인 (`Project Settings → Services`)
+
+작업 중:
+- [ ] 공통 코드(`Assets/Scripts/Network/Bootstrap`, `Lobby`) 수정 시 팀원에게 알림
+- [ ] `LobbyRoomController.raceSceneName` 수정한 채 commit 금지
+- [ ] 자기 씬에 게임 매니저 패턴 따랐는지 확인 (`OnLoadEventCompleted` 사용)
+
+PR 전:
+- [ ] `multi-base`를 최신으로 rebase 또는 merge
+- [ ] 멀티 테스트 (호스트 + 클라이언트 2개 인스턴스)
+- [ ] 자기 씬이 Build Settings에 등록됐는지
+- [ ] DefaultNetworkPrefabs에 새 프리팹 등록됐는지
+
+---
+
+## 16. 자주 빠지는 함정
+
+Phase 1+2 작업 중 마주친 실제 문제들. 참고하세요.
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| 같은 PC 두 인스턴스가 같은 PlayerId | UGS Auth가 PlayerPrefs 토큰 공유 | `InitializationOptions.SetProfile()`로 인스턴스마다 다른 프로필 |
+| 클라이언트에 Player 안 보임 | `OnNetworkSpawn`에서 즉시 spawn → 클라 로드 중 | `SceneManager.OnLoadEventCompleted` 사용 |
+| LaneManager not found | 02_LobbyRoom에서 Player가 spawn됨 | `CreatePlayerObject = false` + 게임 씬에서 매니저가 spawn |
+| 좌우/W/S 입력 안 됨 + 캐릭터 떨어짐 | groundCheckDistance 부적절 + Ground Layer 불일치 | Layer 정확히 매칭 + Distance 0.15~0.3 |
+| NGO Scene Sync 충돌 | `SceneManager.LoadScene`(비네트워크) 사용 | `NetworkManager.Singleton.SceneManager.LoadScene` 사용 (호스트만) |
+| 클라가 02_LobbyRoom에서 "No active session" | NGO Scene Sync가 await 완료 전 호출 | LobbyRoomController.Start를 Coroutine으로 변경, 대기 |
+| 빌드 후 멀티 안 됨 | NetworkPrefabsList 또는 Build Settings 누락 | DefaultNetworkPrefabs.asset + EditorBuildSettings 확인 |
