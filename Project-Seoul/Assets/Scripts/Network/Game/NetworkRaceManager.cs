@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
@@ -7,11 +8,36 @@ namespace Seoul.Network.Game
 {
     public class NetworkRaceManager : NetworkBehaviour
     {
+        public static NetworkRaceManager Instance { get; private set; }
+
         [Header("Spawn")]
         [SerializeField] private float spawnX = 0f;
         [SerializeField] private float spawnY = 1f;
 
+        [Header("Countdown")]
+        [SerializeField] private float countdownDuration = 3f;
+
+        public NetworkVariable<RaceState> State = new(
+            RaceState.WaitingForPlayers,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+
+        public NetworkVariable<float> CountdownRemaining = new(
+            0f,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+
         private readonly Dictionary<ulong, NetworkObject> _spawnedPlayers = new();
+
+        private void Awake()
+        {
+            Instance = this;
+        }
+
+        private void OnDestroy()
+        {
+            if (Instance == this) Instance = null;
+        }
 
         public override void OnNetworkSpawn()
         {
@@ -37,12 +63,33 @@ namespace Seoul.Network.Game
         {
             if (sceneName != gameObject.scene.name) return;
 
-            Debug.Log($"[NetworkRaceManager] All clients loaded '{sceneName}'. Completed=[{string.Join(",", clientsCompleted)}] TimedOut=[{string.Join(",", clientsTimedOut)}]");
+            Debug.Log($"[NetworkRaceManager] All clients loaded '{sceneName}'. Completed=[{string.Join(",", clientsCompleted)}]");
 
             foreach (var clientId in clientsCompleted)
             {
                 SpawnPlayerForClient(clientId);
             }
+
+            StartCoroutine(CountdownRoutine());
+        }
+
+        private IEnumerator CountdownRoutine()
+        {
+            State.Value              = RaceState.Countdown;
+            CountdownRemaining.Value = countdownDuration;
+
+            Debug.Log($"[NetworkRaceManager] Countdown started ({countdownDuration}s)");
+
+            while (CountdownRemaining.Value > 0f)
+            {
+                yield return null;
+                CountdownRemaining.Value -= Time.deltaTime;
+            }
+
+            CountdownRemaining.Value = 0f;
+            State.Value              = RaceState.Racing;
+
+            Debug.Log("[NetworkRaceManager] Race started!");
         }
 
         private void OnLateClientConnected(ulong clientId)
