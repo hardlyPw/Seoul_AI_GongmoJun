@@ -591,6 +591,41 @@ import가 중간에 막히면:
 
 이 3가지만 처음에 한 번 해두시면 됩니다.
 
+### 15.2a 멀티 테스트 — Multiplayer Play Mode (MPPM)로 빌드 없이 4인 동시 테스트
+
+**빌드해서 .exe로 클라 인스턴스 띄우는 거 안 하셔도 됩니다.** Unity 공식 패키지 MPPM이 manifest에 들어있어서, Editor 안에서 가상 플레이어를 최대 3개 더 켤 수 있어요. Main + 가상 3 = 4인 동시 테스트.
+
+#### 어떻게 작동하나요
+
+- 가상 플레이어 = 별도 프로세스. 같은 프로젝트 폴더, 별도 Library/PlayerPrefs.
+- Main Editor에서 Play 누르면 활성화된 가상 플레이어도 같이 Play 시작.
+- 코드 수정은 Main에서만 컴파일하면 자동 반영.
+- 우리 §16의 "같은 PlayerId로 들어옴" 버그도 안 생김 (PlayerPrefs가 인스턴스마다 따로라 자동 분리).
+
+#### 처음 한 번 활성화
+
+1. Unity 메뉴: **Window → Multiplayer → Multiplayer Play Mode**
+2. 패널에서 `Player 2`, `Player 3`, `Player 4` 체크박스 켜기
+3. ⚠️ **첫 활성화 시 Library 복제로 5~10분 걸립니다** (인스턴스당 디스크 5~10GB씩 추가)
+4. 끝나면 Main 옆에 가상 플레이어 창이 나란히 뜸
+
+#### 매번 테스트할 때
+
+- Main Editor에서 그냥 Play
+- 가상 플레이어 창에서 Create Room / Join Room 각자 누르면 4인 매치 성립
+- 디버깅 끝나면 Stop 누르면 다 같이 종료
+
+#### 자주 묻는 거
+
+- **Q. .exe 빌드 테스트랑 결과가 다르지 않나요?**
+  - 거의 동일. 단 빌드 전용 코드(`#if !UNITY_EDITOR`)는 가상 플레이어에서도 Editor로 인식됨. 공모전 시연 직전엔 한 번 실제 빌드 테스트 권장.
+- **Q. 가상 플레이어가 안 떠요.**
+  - Library 복제가 안 끝났거나, Asset 변경 후 Main Editor 컴파일이 진행 중일 수 있음. 콘솔 확인.
+- **Q. 가상 플레이어에서 Console 로그 보고 싶어요.**
+  - MPPM 패널의 해당 Player 항목에서 `Window` 버튼 누르면 그 인스턴스 전용 창 띄울 수 있음.
+
+> **요약**: 활성화는 처음 한 번만, 그 후엔 Play 한 번으로 4인 테스트 가능. 빌드 시간 매번 절약됨.
+
 ### 15.3 새 미니게임 씬 만들기
 
 #### 씬은 여기에 만드세요
@@ -714,7 +749,7 @@ Assets/DefaultNetworkPrefabs.asset 더블클릭
 
 **PR 올리기 전:**
 - [ ] `multi-base` 최신으로 rebase 또는 merge
-- [ ] 멀티 테스트 (호스트 + 클라 2개 인스턴스 띄워서 실제 작동 확인)
+- [ ] 멀티 테스트 (MPPM 가상 플레이어로 4인 시뮬레이션 — §15.2a 참고)
 - [ ] 본인 씬이 Build Settings에 등록됐는지 확인
 - [ ] 새 NetworkObject 프리팹이 DefaultNetworkPrefabs에 등록됐는지 확인
 
