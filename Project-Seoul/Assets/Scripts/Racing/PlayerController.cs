@@ -25,6 +25,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private LayerMask groundLayer = ~0;
     [SerializeField] private bool      debugGround = false;
 
+    [Header("Jump Buffer")]
+    [SerializeField] private float     jumpBufferTime      = 0.15f;
+
     [Header("Lane (Z축)")]
     [SerializeField] private int   startLane          = 3;
     [SerializeField] private float laneSnapSpeed      = 8f;
@@ -60,6 +63,8 @@ public class PlayerController : MonoBehaviour
     private float _recoveryTimer;
     private float _recoverySpeedMult = 1f;
     private float _externalSpeedMult = 1f;
+
+    private float _jumpBufferTimer;
 
     public float Stamina     => _stamina;
     public float MaxStamina  => maxStamina;
@@ -206,10 +211,23 @@ public class PlayerController : MonoBehaviour
     private void HandleJumpInput()
     {
         if (_isFallen) return;
-        if (_input.GetJumpDown() && _isGrounded)
+
+        if (_input.GetJumpDown())
+        {
+            _jumpBufferTimer = jumpBufferTime;
+        }
+        else
+        {
+            // 키 입력이 없는 프레임에는 타이머 차감
+            _jumpBufferTimer -= Time.deltaTime;
+        }
+
+        if (_jumpBufferTimer > 0f && _isGrounded)
         {
             _velocity.y = jumpForce;
             _isGrounded = false;
+            
+            _jumpBufferTimer = 0f;
         }
     }
 
