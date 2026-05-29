@@ -12,15 +12,15 @@ public class StageManager : MonoBehaviour
     public UnityEvent OnStageStart;
     public UnityEvent OnAllPlayersFinished;
 
-    private readonly List<PlayerController> _players         = new();
+    private readonly List<PlayerController> _players = new();
     private readonly List<PlayerController> _finishedPlayers = new();
     private bool _stageActive;
 
-    public bool      StageActive    => _stageActive;
-    public Transform GoalPoint      => goalPoint;
-    public Transform StartPoint     => startPoint;
-    public int       FinishedCount  => _finishedPlayers.Count;
-    public int       PlayerCount    => _players.Count;
+    public bool StageActive => _stageActive;
+    public Transform GoalPoint => goalPoint;
+    public Transform StartPoint => startPoint;
+    public int FinishedCount => _finishedPlayers.Count;
+    public int PlayerCount => _players.Count;
 
     public System.Collections.Generic.IReadOnlyList<PlayerController> FinishedPlayers => _finishedPlayers;
 
