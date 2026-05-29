@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -60,6 +60,9 @@ public class PlayerController : MonoBehaviour
     private float _recoveryTimer;
     private float _recoverySpeedMult = 1f;
     private float _externalSpeedMult = 1f;
+
+    // 감속 코루틴 추가했습니다
+    private Coroutine _slowCoroutine;
 
     public float Stamina     => _stamina;
     public float MaxStamina  => maxStamina;
@@ -347,5 +350,23 @@ public class PlayerController : MonoBehaviour
         dir.y = 0.4f;
         dir.z = 0f;
         _velocity += dir.normalized * knockbackForce;
+    }
+
+    // ㅡㅡ 감속 장애물 처리 ㅡㅡ
+    public void ApplySlow(float speedRatio, float duration)
+    {
+        if (_slowCoroutine != null)
+        {
+            StopCoroutine(_slowCoroutine);
+        }
+        _slowCoroutine = StartCoroutine(SlowRoutine(speedRatio, duration));
+    }
+
+    private System.Collections.IEnumerator SlowRoutine(float ratio, float duration)
+    {
+        _externalSpeedMult = ratio;
+        yield return new WaitForSeconds(duration);
+
+        _externalSpeedMult = 1.0f;
     }
 }

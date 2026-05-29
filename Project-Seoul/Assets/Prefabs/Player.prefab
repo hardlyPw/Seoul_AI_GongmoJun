@@ -19,7 +19,7 @@ GameObject:
   - component: {fileID: 7031459225403562420}
   m_Layer: 7
   m_Name: Player
-  m_TagString: Untagged
+  m_TagString: Player
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -271,3 +271,8 @@ MonoBehaviour:
   controller: {fileID: 6586932174518866934}
   ownerVisualMarker: {fileID: 0}
   attachCameraOnSpawn: 1
+  Score:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
