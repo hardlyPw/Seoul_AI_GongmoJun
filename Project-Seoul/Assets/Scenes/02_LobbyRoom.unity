@@ -1069,7 +1069,7 @@ MonoBehaviour:
   startGameButton: {fileID: 1777498257}
   leaveButton: {fileID: 483064233}
   titleSceneName: 01_Title
-  raceSceneName: 03_Race
+  raceSceneName: 03_Stage_Running
 --- !u!1 &1440039046
 GameObject:
   m_ObjectHideFlags: 0

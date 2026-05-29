@@ -19,7 +19,7 @@ namespace Seoul.Network.Lobby
 
         [Header("Scene")]
         [SerializeField] private string titleSceneName = "01_Title";
-        [SerializeField] private string raceSceneName  = "03_Race";
+        [SerializeField] private string raceSceneName  = "03_Stage_Running";
 
         private float _refreshTimer;
         private const float RefreshInterval = 1f;
