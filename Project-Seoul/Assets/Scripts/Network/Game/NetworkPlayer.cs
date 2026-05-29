@@ -378,7 +378,7 @@ namespace Seoul.Network.Game
             if (targetScene != myScene)
             {
                 Debug.Log($"[NetworkPlayer] Following target into scene '{targetScene}'");
-                SceneManager.LoadScene(targetScene, LoadSceneMode.Single);
+                SceneTransition.Load(targetScene);
                 return;
             }
 

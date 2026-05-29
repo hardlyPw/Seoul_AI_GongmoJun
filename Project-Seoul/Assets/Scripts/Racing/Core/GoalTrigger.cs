@@ -20,7 +20,7 @@ public class GoalTrigger : MonoBehaviour
             if (!string.IsNullOrEmpty(nextSceneName))
             {
                 Debug.Log($"[GoalTrigger] Owner goaled — local-loading '{nextSceneName}'");
-                SceneManager.LoadScene(nextSceneName, LoadSceneMode.Single);
+                SceneTransition.Load(nextSceneName);
             }
             else
             {
