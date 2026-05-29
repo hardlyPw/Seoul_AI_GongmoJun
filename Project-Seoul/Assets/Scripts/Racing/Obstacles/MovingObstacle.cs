@@ -1,74 +1,49 @@
-using UnityEngine;
+﻿using UnityEngine;
+using Unity.Netcode;
 
-using UnityEngine;
-
-// 이동형 장애물 (조깅하는 사람, 어르신, 자전거 등)
 public class MovingObstacle : ObstacleBase
 {
     public enum MoveAxis { X, Y, Z }
 
-    [SerializeField] private MoveAxis axis      = MoveAxis.Z;
-    [SerializeField] private float    moveSpeed = 2f;
-
-    [Header("Z축 레인 이동 (axis = Z일 때)")]
-    [SerializeField] private int minLane = 0;
-    [SerializeField] private int maxLane = 2;
-
-    [Header("X/Y축 이동 (axis = X or Y일 때)")]
-    [SerializeField] private int   laneIndex = 0;
-    [SerializeField] private float moveRange = 3f;
+    [Header("이동 설정")]
+    [SerializeField] private MoveAxis axis = MoveAxis.Z; // 기본값 Z축
+    [SerializeField] private float moveDistance = 3f;
+    [SerializeField] private float moveSpeed = 2f;
 
     private Rigidbody _rb;
-    private Vector3   _origin;
-    private float     _phase;
-    private float     _minZ;
-    private float     _maxZ;
+    private Vector3 _startPos;
+    private float _randomPhase;
 
     protected override void Awake()
     {
         base.Awake();
-        _rb    = GetComponent<Rigidbody>();
-        _phase = Random.Range(0f, Mathf.PI * 2f);
+        _rb = GetComponent<Rigidbody>();
     }
 
-    private void Start()
+    public override void OnNetworkSpawn()
     {
-        var lm  = LaneManager.Instance;
-        var pos = transform.position;
+        base.OnNetworkSpawn();
+        _startPos = transform.position;
 
-        if (axis == MoveAxis.Z)
+        if (IsServer)
         {
-            _minZ = lm.GetLaneZ(maxLane);
-            _maxZ = lm.GetLaneZ(minLane);
-            pos.z = _maxZ;
+            _randomPhase = Random.Range(0f, Mathf.PI * 2f);
         }
-        else
-        {
-            pos.z = lm.GetLaneZ(laneIndex);
-        }
-
-        transform.position = pos;
-        _origin            = transform.position;
     }
 
     private void FixedUpdate()
     {
-        float t   = (Mathf.Sin(Time.time * moveSpeed + _phase) + 1f) * 0.5f; // 0~1
-        Vector3 pos = _origin;
+        if (!IsServer) return;
 
+        float offset = Mathf.Sin(Time.fixedTime * moveSpeed + _randomPhase) * moveDistance;
+        Vector3 targetPos = _startPos;
         switch (axis)
         {
-            case MoveAxis.Z:
-                pos.z = Mathf.Lerp(_minZ, _maxZ, t);
-                break;
-            case MoveAxis.X:
-                pos.x = _origin.x + (Mathf.Sin(Time.time * moveSpeed + _phase) * moveRange);
-                break;
-            case MoveAxis.Y:
-                pos.y = _origin.y + (Mathf.Sin(Time.time * moveSpeed + _phase) * moveRange);
-                break;
+            case MoveAxis.X: targetPos.x += offset; break;
+            case MoveAxis.Y: targetPos.y += offset; break;
+            case MoveAxis.Z: targetPos.z += offset; break;
         }
 
-        _rb.MovePosition(pos);
+        _rb.MovePosition(targetPos);
     }
 }
