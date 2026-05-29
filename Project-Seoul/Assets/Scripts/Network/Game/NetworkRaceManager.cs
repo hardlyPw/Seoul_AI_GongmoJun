@@ -27,7 +27,9 @@ namespace Seoul.Network.Game
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
 
-        private readonly Dictionary<ulong, NetworkObject> _spawnedPlayers = new();
+        private readonly Dictionary<ulong, NetworkObject> _spawnedPlayers  = new();
+        private readonly HashSet<ulong>                  _finishedClients = new();
+        private int _nextRank = 1;
 
         private void Awake()
         {
@@ -44,6 +46,12 @@ namespace Seoul.Network.Game
             Debug.Log($"[NetworkRaceManager] OnNetworkSpawn IsServer={IsServer} IsClient={IsClient} IsHost={IsHost} LocalClientId={NetworkManager.Singleton.LocalClientId}");
 
             if (!IsServer) return;
+
+            if (SessionScoreStore.Instance == null)
+            {
+                var go = new GameObject("SessionScoreStore");
+                go.AddComponent<SessionScoreStore>();
+            }
 
             NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += OnLoadEventCompleted;
             NetworkManager.Singleton.OnClientConnectedCallback         += OnLateClientConnected;
@@ -92,6 +100,23 @@ namespace Seoul.Network.Game
             Debug.Log("[NetworkRaceManager] Race started!");
         }
 
+        public void ReportGoal(ulong clientId)
+        {
+            if (!IsServer) return;
+            if (_finishedClients.Contains(clientId)) return;
+
+            _finishedClients.Add(clientId);
+            int rank = _nextRank++;
+
+            if (_spawnedPlayers.TryGetValue(clientId, out var netObj) && netObj != null)
+            {
+                var np = netObj.GetComponent<NetworkPlayer>();
+                if (np != null) np.MarkFinished(rank);
+            }
+
+            Debug.Log($"[NetworkRaceManager] clientId={clientId} reached goal — rank {rank} (this stage: {_finishedClients.Count} finished)");
+        }
+
         private void OnLateClientConnected(ulong clientId)
         {
             if (!IsServer) return;
@@ -103,6 +128,17 @@ namespace Seoul.Network.Game
         {
             if (!IsServer) return;
             if (_spawnedPlayers.ContainsKey(clientId)) return;
+
+            // 이미 살아있는 NetworkPlayer가 있으면 (DontDestroyOnLoad로 이전 스테이지에서 넘어옴) 다시 안 만듦
+            foreach (var existing in NetworkPlayer.All)
+            {
+                if (existing != null && existing.OwnerClientId == clientId)
+                {
+                    _spawnedPlayers[clientId] = existing.GetComponent<NetworkObject>();
+                    Debug.Log($"[NetworkRaceManager] Reusing existing NetworkPlayer for clientId={clientId}");
+                    return;
+                }
+            }
 
             var prefab = NetworkManager.Singleton.NetworkConfig.PlayerPrefab;
             if (prefab == null)
@@ -119,7 +155,10 @@ namespace Seoul.Network.Game
             Vector3 spawnPos = new Vector3(spawnX, spawnY, z);
             var go     = Instantiate(prefab, spawnPos, Quaternion.identity);
             var netObj = go.GetComponent<NetworkObject>();
-            netObj.SpawnAsPlayerObject(clientId, true);
+            // destroyWithScene=false: 씬 언로드 시 NGO가 자동으로 despawn 하지 않도록.
+            // DontDestroyOnLoad와 함께 쓰려면 false여야 함 — true면 NGO가
+            // 스폰 시점 씬 핸들을 캐싱해서 그 씬 언로드시 DDOL 무시하고 despawn함.
+            netObj.SpawnAsPlayerObject(clientId, false);
 
             _spawnedPlayers[clientId] = netObj;
             Debug.Log($"[NetworkRaceManager] Spawned player for clientId={clientId} at lane {laneIndex} (pos {spawnPos})");
