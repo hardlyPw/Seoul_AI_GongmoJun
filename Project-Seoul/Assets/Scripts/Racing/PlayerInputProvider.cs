@@ -2,16 +2,6 @@ using UnityEngine.InputSystem;
 
 public class PlayerInputProvider : IInputProvider
 {
-    public float GetHorizontal()
-    {
-        var kb = Keyboard.current;
-        if (kb == null) return 0f;
-        float h = 0f;
-        if (kb.aKey.isPressed || kb.leftArrowKey.isPressed)  h -= 1f;
-        if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) h += 1f;
-        return h;
-    }
-
     public float GetLaneChange()
     {
         var kb = Keyboard.current;

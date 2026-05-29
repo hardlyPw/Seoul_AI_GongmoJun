@@ -170,18 +170,16 @@ public class PlayerController : MonoBehaviour
 
     private void HandleMovement()
     {
-        if (_isFallen)
+        // 카운트다운/관전/스폰 직후처럼 입력이 비활성화된 상태에선 자동 전진도 안 함.
+        if (_isFallen || _input is NullInputProvider)
         {
             _velocity.x = Mathf.MoveTowards(_velocity.x, 0f, deceleration * Time.fixedDeltaTime);
             return;
         }
 
-        float h = _input.GetHorizontal();
+        // 자동 전진: 입력 없이 항상 앞으로. 스프린트(J 홀드)로 속도 부스트.
         float speed = (_isSprinting ? sprintSpeed : walkSpeed) * _recoverySpeedMult * _externalSpeedMult;
-
-        _velocity.x = Mathf.Abs(h) > 0.01f
-            ? Mathf.MoveTowards(_velocity.x, h * speed, acceleration * Time.fixedDeltaTime)
-            : Mathf.MoveTowards(_velocity.x, 0f, deceleration * Time.fixedDeltaTime);
+        _velocity.x = Mathf.MoveTowards(_velocity.x, speed, acceleration * Time.fixedDeltaTime);
     }
 
     // ── Z축 스냅 (라인 이동) ──────────────────────────────
