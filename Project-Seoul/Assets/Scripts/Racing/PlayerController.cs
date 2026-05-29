@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -64,13 +64,17 @@ public class PlayerController : MonoBehaviour
     private float _recoverySpeedMult = 1f;
     private float _externalSpeedMult = 1f;
 
-    private float _jumpBufferTimer;
 
-    public float Stamina => _stamina;
-    public float MaxStamina => maxStamina;
-    public bool IsSprinting => _isSprinting;
-    public bool IsFallen => _isFallen;
-    public int CurrentLane => _currentLane;
+    // 감속 코루틴 추가했습니다
+    private float _jumpBufferTimer;
+    private Coroutine _slowCoroutine;
+
+    public float Stamina     => _stamina;
+    public float MaxStamina  => maxStamina;
+    public bool  IsSprinting => _isSprinting;
+    public bool  IsFallen    => _isFallen;
+    public int   CurrentLane => _currentLane;
+
 
     public void Initialize(IInputProvider inputProvider) => _input = inputProvider;
 
@@ -377,7 +381,25 @@ public class PlayerController : MonoBehaviour
         _velocity += dir.normalized * knockbackForce;
     }
 
-    // ── 지하철 지진 기믹 동기화 수신부 ─────────────────
+
+    // ㅡㅡ 감속 장애물 처리 ㅡㅡ
+    public void ApplySlow(float speedRatio, float duration)
+    {
+        if (_slowCoroutine != null)
+        {
+            StopCoroutine(_slowCoroutine);
+        }
+        _slowCoroutine = StartCoroutine(SlowRoutine(speedRatio, duration));
+    }
+
+    private System.Collections.IEnumerator SlowRoutine(float ratio, float duration)
+    {
+        _externalSpeedMult = ratio;
+        yield return new WaitForSeconds(duration);
+
+        _externalSpeedMult = 1.0f;
+    }
+    
     private void OnGimmickForceLaneChange(int direction)
     {
         // 1. NGO 멀티플레이 환경 소유권 필터링
@@ -408,5 +430,6 @@ public class PlayerController : MonoBehaviour
             Debug.Log($"[{gameObject.name}] 글로벌 기믹 신호로 레인 강제 보정: {targetLane}");
         }
     }
+
 
 }
