@@ -6,36 +6,36 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour
 {
     [Header("Movement")]
-    [SerializeField] private float walkSpeed    = 5f;
-    [SerializeField] private float sprintSpeed  = 10f;
+    [SerializeField] private float walkSpeed = 5f;
+    [SerializeField] private float sprintSpeed = 10f;
     [SerializeField] private float acceleration = 20f;
     [SerializeField] private float deceleration = 15f;
 
     [Header("Stamina")]
-    [SerializeField] private float maxStamina       = 100f;
-    [SerializeField] private float sprintDrainRate  = 20f;
+    [SerializeField] private float maxStamina = 100f;
+    [SerializeField] private float sprintDrainRate = 20f;
     [SerializeField] private float staminaRegenRate = 10f;
     [SerializeField] private float minSprintStamina = 10f;
 
     [Header("Jump / Gravity")]
-    [SerializeField] private float     jumpForce           = 8f;
-    [SerializeField] private float     gravity             = 25f;
-    [SerializeField] private float     maxFallSpeed        = 30f;
-    [SerializeField] private float     groundCheckDistance = 0.3f;
+    [SerializeField] private float jumpForce = 8f;
+    [SerializeField] private float gravity = 25f;
+    [SerializeField] private float maxFallSpeed = 30f;
+    [SerializeField] private float groundCheckDistance = 0.3f;
     [SerializeField] private LayerMask groundLayer = ~0;
-    [SerializeField] private bool      debugGround = false;
+    [SerializeField] private bool debugGround = false;
 
     [Header("Jump Buffer")]
-    [SerializeField] private float     jumpBufferTime      = 0.15f;
+    [SerializeField] private float jumpBufferTime = 0.15f;
 
     [Header("Lane (Z축)")]
-    [SerializeField] private int   startLane          = 3;
-    [SerializeField] private float laneSnapSpeed      = 8f;
+    [SerializeField] private int startLane = 3;
+    [SerializeField] private float laneSnapSpeed = 8f;
     [SerializeField] private float laneChangeCooldown = 0.3f;
 
     [Header("Fallen")]
     [SerializeField] private float fallenDuration = 1.2f;
-    [SerializeField] private float recoveryTime   = 0.8f;
+    [SerializeField] private float recoveryTime = 0.8f;
     [SerializeField] private float knockbackForce = 6f;
 
     [Header("Player Collision")]
@@ -45,20 +45,20 @@ public class PlayerController : MonoBehaviour
     public event Action OnItemUse;
     public event Action OnInteract;
 
-    private Rigidbody       _rb;
+    private Rigidbody _rb;
     private CapsuleCollider _col;
-    private IInputProvider  _input;
+    private IInputProvider _input;
 
     private Vector3 _velocity;
 
     private float _stamina;
-    private bool  _isSprinting;
-    private bool  _isGrounded;
+    private bool _isSprinting;
+    private bool _isGrounded;
 
-    private int   _currentLane;
+    private int _currentLane;
     private float _laneChangeCooldownTimer;
 
-    private bool  _isFallen;
+    private bool _isFallen;
     private float _fallenTimer;
     private float _recoveryTimer;
     private float _recoverySpeedMult = 1f;
@@ -66,21 +66,31 @@ public class PlayerController : MonoBehaviour
 
     private float _jumpBufferTimer;
 
-    public float Stamina     => _stamina;
-    public float MaxStamina  => maxStamina;
-    public bool  IsSprinting => _isSprinting;
-    public bool  IsFallen    => _isFallen;
-    public int   CurrentLane => _currentLane;
+    public float Stamina => _stamina;
+    public float MaxStamina => maxStamina;
+    public bool IsSprinting => _isSprinting;
+    public bool IsFallen => _isFallen;
+    public int CurrentLane => _currentLane;
 
     public void Initialize(IInputProvider inputProvider) => _input = inputProvider;
 
+    private void OnEnable()
+    {
+        StageEventManager.OnForceLaneChangeRequested += OnGimmickForceLaneChange;
+    }
+
+    private void OnDisable()
+    {
+        StageEventManager.OnForceLaneChangeRequested -= OnGimmickForceLaneChange;
+    }
+
     private void Awake()
     {
-        _rb  = GetComponent<Rigidbody>();
+        _rb = GetComponent<Rigidbody>();
         _col = GetComponent<CapsuleCollider>();
 
         _rb.isKinematic = true;
-        _rb.useGravity  = false;
+        _rb.useGravity = false;
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
         _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
 
@@ -101,7 +111,7 @@ public class PlayerController : MonoBehaviour
         _currentLane = FindNearestLane(transform.position.z);
 
         var pos = transform.position;
-        pos.z              = LaneManager.Instance.GetLaneZ(_currentLane);
+        pos.z = LaneManager.Instance.GetLaneZ(_currentLane);
         transform.position = pos;
     }
 
@@ -162,12 +172,12 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        float h     = _input.GetHorizontal();
+        float h = _input.GetHorizontal();
         float speed = (_isSprinting ? sprintSpeed : walkSpeed) * _recoverySpeedMult * _externalSpeedMult;
 
         _velocity.x = Mathf.Abs(h) > 0.01f
             ? Mathf.MoveTowards(_velocity.x, h * speed, acceleration * Time.fixedDeltaTime)
-            : Mathf.MoveTowards(_velocity.x, 0f,        deceleration * Time.fixedDeltaTime);
+            : Mathf.MoveTowards(_velocity.x, 0f, deceleration * Time.fixedDeltaTime);
     }
 
     // ── Z축 스냅 (라인 이동) ──────────────────────────────
@@ -176,7 +186,7 @@ public class PlayerController : MonoBehaviour
     {
         if (LaneManager.Instance == null) { _velocity.z = 0f; return; }
 
-        float targetZ  = LaneManager.Instance.GetLaneZ(_currentLane);
+        float targetZ = LaneManager.Instance.GetLaneZ(_currentLane);
         float currentZ = _rb.position.z;
         if (Mathf.Abs(currentZ - targetZ) < 0.001f)
         {
@@ -226,7 +236,7 @@ public class PlayerController : MonoBehaviour
         {
             _velocity.y = jumpForce;
             _isGrounded = false;
-            
+
             _jumpBufferTimer = 0f;
         }
     }
@@ -275,13 +285,13 @@ public class PlayerController : MonoBehaviour
         if (_input.GetSprint() && _stamina >= minSprintStamina && !_isFallen)
         {
             _isSprinting = true;
-            _stamina     = Mathf.Max(0f, _stamina - sprintDrainRate * Time.deltaTime);
+            _stamina = Mathf.Max(0f, _stamina - sprintDrainRate * Time.deltaTime);
             if (_stamina <= 0f) _isSprinting = false;
         }
         else
         {
             _isSprinting = false;
-            _stamina     = Mathf.Min(maxStamina, _stamina + staminaRegenRate * Time.deltaTime);
+            _stamina = Mathf.Min(maxStamina, _stamina + staminaRegenRate * Time.deltaTime);
         }
     }
 
@@ -290,7 +300,7 @@ public class PlayerController : MonoBehaviour
     public void TriggerFall()
     {
         if (_isFallen) return;
-        _isFallen    = true;
+        _isFallen = true;
         _fallenTimer = fallenDuration;
         _recoverySpeedMult = 0f;
         _velocity.x = 0f;
@@ -303,14 +313,14 @@ public class PlayerController : MonoBehaviour
             _fallenTimer -= Time.deltaTime;
             if (_fallenTimer <= 0f)
             {
-                _isFallen      = false;
+                _isFallen = false;
                 _recoveryTimer = recoveryTime;
             }
             return;
         }
         if (_recoveryTimer > 0f)
         {
-            _recoveryTimer    -= Time.deltaTime;
+            _recoveryTimer -= Time.deltaTime;
             _recoverySpeedMult = Mathf.Clamp01(1f - _recoveryTimer / recoveryTime);
         }
         else
@@ -323,14 +333,14 @@ public class PlayerController : MonoBehaviour
 
     private void HandleItemAndInteract()
     {
-        if (_input.GetItemUse())      OnItemUse?.Invoke();
+        if (_input.GetItemUse()) OnItemUse?.Invoke();
         if (_input.GetInteractDown()) OnInteract?.Invoke();
     }
 
     // ── 공개 메서드 ───────────────────────────────────────
 
     public void SetSpeedMultiplier(float mult) => _externalSpeedMult = mult;
-    public void RecoverStamina(float amount)   => _stamina = Mathf.Min(maxStamina, _stamina + amount);
+    public void RecoverStamina(float amount) => _stamina = Mathf.Min(maxStamina, _stamina + amount);
 
     // ── 플레이어 간 충돌 (OverlapSphere) ─────────────────
 
@@ -366,4 +376,37 @@ public class PlayerController : MonoBehaviour
         dir.z = 0f;
         _velocity += dir.normalized * knockbackForce;
     }
+
+    // ── 지하철 지진 기믹 동기화 수신부 ─────────────────
+    private void OnGimmickForceLaneChange(int direction)
+    {
+        // 1. NGO 멀티플레이 환경 소유권 필터링
+        if (TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj))
+        {
+            // 로컬 유저 캐릭, AI 봇(호스트 경우)에만 수정 가능
+            bool isMyCharacter = netObj.IsOwner;
+            bool isServerSimulatedBot = Unity.Netcode.NetworkManager.Singleton != null &&
+                                        Unity.Netcode.NetworkManager.Singleton.IsServer &&
+                                        !netObj.IsOwnedByServer &&
+                                        netObj.OwnerClientId == Unity.Netcode.NetworkManager.ServerClientId;
+
+            if (!isMyCharacter && !isServerSimulatedBot) return;
+        }
+
+        // 예외 상태 처리
+        if (_isFallen) return;
+
+        // 6레인 한계 연산 및 내부 스냅 인덱스 변경
+        int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
+        int targetLane = Mathf.Clamp(_currentLane + direction, 0, laneCount - 1);
+
+        if (targetLane != _currentLane)
+        {
+            _currentLane = targetLane;
+            _laneChangeCooldownTimer = laneChangeCooldown; // 변경 직후 쿨타임 동기화
+
+            Debug.Log($"[{gameObject.name}] 글로벌 기믹 신호로 레인 강제 보정: {targetLane}");
+        }
+    }
+
 }
