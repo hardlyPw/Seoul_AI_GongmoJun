@@ -106,11 +106,6 @@ namespace Seoul.Network.Game
                 SpawnPlayerForClient(clientId);
             }
 
-            if (sceneName == "03_02_Subway")
-            {
-                SetActiveGimmick(new SubwayquakeGimmick(this, 6f));
-            }
-
             StartCoroutine(CountdownRoutine());
         }
 
