@@ -104,3 +104,9 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Unity auto-recovery folder
+**/[Aa]ssets/_[Rr]ecovery/
+
+# Visual Studio per-user config
+**/.vsconfig
