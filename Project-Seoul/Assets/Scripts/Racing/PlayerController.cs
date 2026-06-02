@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -67,7 +68,9 @@ public class PlayerController : MonoBehaviour
     private float _jumpBufferTimer;
     private float _recoveryTimer;
     private float _recoverySpeedMult = 1f;
-    private float _externalSpeedMult = 1f;
+    // source → multiplier. Overpass/Kickboard/Puddle 등 여러 효과가 동시에 곱해지도록.
+    // 단일 슬롯이던 시절에는 한쪽이 끝나면 다른 효과가 사라지는 버그가 있었음.
+    private readonly Dictionary<string, float> _speedModifiers = new();
     private Coroutine _slowCoroutine;
 
     // 외부/상태 접근용 프로퍼티
@@ -194,9 +197,16 @@ public class PlayerController : MonoBehaviour
 
     public void CalculateForwardVelocity(float targetBaseSpeed)
     {
-        float target = targetBaseSpeed * _recoverySpeedMult * _externalSpeedMult;
+        float target = targetBaseSpeed * _recoverySpeedMult * ComputeSpeedMultiplier();
         float rate = (targetBaseSpeed > 0f) ? acceleration : deceleration;
         _velocity.x = Mathf.MoveTowards(_velocity.x, target, rate * Time.fixedDeltaTime);
+    }
+
+    private float ComputeSpeedMultiplier()
+    {
+        float m = 1f;
+        foreach (var v in _speedModifiers.Values) m *= v;
+        return m;
     }
 
     public void SetVelocityX(float newX) => _velocity.x = newX;
@@ -393,9 +403,11 @@ public class PlayerController : MonoBehaviour
 
     // ── 공개 메서드 ───────────────────────────────────────
 
-    public void SetSpeedMultiplier(float mult) => _externalSpeedMult = mult;
+    public void SetSpeedMultiplier(string source, float mult) => _speedModifiers[source] = mult;
+    public void ClearSpeedMultiplier(string source) => _speedModifiers.Remove(source);
     public void RecoverStamina(float amount) => _stamina = Mathf.Min(maxStamina, _stamina + amount);
 
+    private const string SlowSource = "puddle";
     public void ApplySlow(float speedRatio, float duration)
     {
         if (_slowCoroutine != null) StopCoroutine(_slowCoroutine);
@@ -404,9 +416,9 @@ public class PlayerController : MonoBehaviour
 
     private System.Collections.IEnumerator SlowRoutine(float ratio, float duration)
     {
-        _externalSpeedMult = ratio;
+        SetSpeedMultiplier(SlowSource, ratio);
         yield return new WaitForSeconds(duration);
-        _externalSpeedMult = 1f;
+        ClearSpeedMultiplier(SlowSource);
     }
 
     // ── 기믹: 강제 라인 변경 ──────────────────────────────
