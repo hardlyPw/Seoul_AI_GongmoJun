@@ -132,9 +132,22 @@ public class PlayerController : MonoBehaviour
         return nearest;
     }
 
+    // 비-owner의 로컬 시뮬레이션 차단 — NetworkTransform 보간과 경쟁 방지.
+    // AI 봇은 호스트가 서버 권한으로 시뮬레이션해야 하므로 예외로 허용.
+    private bool IsLocallySimulated()
+    {
+        if (!TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj)) return true;
+        if (netObj.IsOwner) return true;
+        return Unity.Netcode.NetworkManager.Singleton != null
+            && Unity.Netcode.NetworkManager.Singleton.IsServer
+            && !netObj.IsOwnedByServer
+            && netObj.OwnerClientId == Unity.Netcode.NetworkManager.ServerClientId;
+    }
+
     private void Update()
     {
         if (_input == null) return;
+        if (!IsLocallySimulated()) return;
         CheckGrounded();
         HandleStamina();
         HandleLaneChange();
@@ -146,6 +159,7 @@ public class PlayerController : MonoBehaviour
     private void FixedUpdate()
     {
         if (_input == null) return;
+        if (!IsLocallySimulated()) return;
 
         ApplyGravity();
         HandleMovement();
@@ -365,6 +379,8 @@ public class PlayerController : MonoBehaviour
 
     private void OnTriggerEnter(Collider col)
     {
+        if (!IsLocallySimulated()) return;
+
         if (col.TryGetComponent<ObstacleBase>(out var obstacle) && obstacle.KnockDownOnCollision)
         {
             TriggerFall();
