@@ -395,11 +395,15 @@ public class PlayerController : MonoBehaviour
         if (!IsLocallySimulated()) return;
         if (IsFallen) return;
 
-        if (col.TryGetComponent<ObstacleBase>(out var obstacle) && obstacle.KnockDownOnCollision)
-        {
-            TriggerFall();
-            ApplyKnockback(transform.position - col.transform.position);
-        }
+        if (col.TryGetComponent<ObstacleBase>(out var obstacle))
+            obstacle.HandlePlayerEnter(this);
+    }
+
+    // ObstacleBase에서 호출. 충돌 지점을 받아 knockback 방향 계산.
+    public void HitByObstacle(Vector3 obstaclePos)
+    {
+        TriggerFall();
+        ApplyKnockback(transform.position - obstaclePos);
     }
 
     private void ApplyKnockback(Vector3 dir)
