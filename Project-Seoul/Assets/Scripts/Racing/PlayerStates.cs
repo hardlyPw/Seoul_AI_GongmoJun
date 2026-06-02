@@ -25,6 +25,7 @@ public class PlayerIdleState : IPlayerState
     {
         if (!other.TryGetComponent<PlayerController>(out var otherPlayer)) return;
         if (otherPlayer.IsFallen) return;
+        if (!player.IsInSameLane(other)) return;
 
         // 앞에 있는 사람에게 가로막힘 (X축 기준)
         if (other.transform.position.x > player.transform.position.x)
@@ -60,6 +61,7 @@ public class PlayerRunState : IPlayerState
     {
         if (!other.TryGetComponent<PlayerController>(out var otherPlayer)) return;
         if (otherPlayer.IsFallen) return;
+        if (!player.IsInSameLane(other)) return;
 
         if (other.transform.position.x > player.transform.position.x)
         {
@@ -79,7 +81,6 @@ public class PlayerDashState : IPlayerState
     {
         _timer = player.DashDuration;
         player.ConsumeStamina(player.DashStaminaCost);
-        Debug.Log($"[Dash] 진입 — duration={_timer:F2}s, stamina={player.Stamina:F1}");
     }
 
     public void UpdateState(PlayerController player)
@@ -97,10 +98,10 @@ public class PlayerDashState : IPlayerState
     {
         if (!other.TryGetComponent<PlayerController>(out var otherPlayer)) return;
         if (otherPlayer.IsFallen) return;
+        if (!player.IsInSameLane(other)) return;
 
-        // dash 중에 닿은 다른 플레이어는 모두 추월(넘어뜨림).
+        // dash 중에 같은 lane에서 닿은 다른 플레이어는 모두 추월(넘어뜨림).
         // x 비교 안 함 — dash 진입 시 본인이 가속하면서 곧장 상대보다 앞서버려 조건 false가 되는 케이스를 피함.
-        Debug.Log($"[Dash] hit {otherPlayer.name} — myX={player.transform.position.x:F2}, otherX={other.transform.position.x:F2}");
         otherPlayer.TriggerFall();
     }
 

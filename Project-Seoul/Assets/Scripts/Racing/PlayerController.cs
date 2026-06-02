@@ -222,6 +222,14 @@ public class PlayerController : MonoBehaviour
         return true;
     }
 
+    // 충돌 감지 sphere(0.6) + 상대 capsule(~0.5) 합이 lane spacing(1.0)보다 커서
+    // 옆 lane에서도 OverlapSphere가 잡힘. 같은 lane만 처리하도록 Z 좌표로 사후 필터.
+    public bool IsInSameLane(Collider other)
+    {
+        float spacing = LaneManager.Instance != null ? LaneManager.Instance.LaneSpacing : 1f;
+        return Mathf.Abs(transform.position.z - other.transform.position.z) < spacing * 0.5f;
+    }
+
     // ── 스태미나/회복 ─────────────────────────────────────
 
     private void HandleNaturalStaminaRegen()
