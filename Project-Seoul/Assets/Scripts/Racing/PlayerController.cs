@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
@@ -8,6 +8,7 @@ public class PlayerController : MonoBehaviour
     [Header("Movement")]
     [SerializeField] private float walkSpeed = 5f;
     [SerializeField] private float sprintSpeed = 10f;
+    [SerializeField] private float dashSpeed = 15f;
     [SerializeField] private float acceleration = 20f;
     [SerializeField] private float deceleration = 15f;
 
@@ -16,6 +17,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float sprintDrainRate = 20f;
     [SerializeField] private float staminaRegenRate = 10f;
     [SerializeField] private float minSprintStamina = 10f;
+    [SerializeField] private float dashStaminaCost = 30f;
 
     [Header("Jump / Gravity")]
     [SerializeField] private float jumpForce = 8f;
@@ -33,10 +35,11 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float laneSnapSpeed = 8f;
     [SerializeField] private float laneChangeCooldown = 0.3f;
 
-    [Header("Fallen")]
+    [Header("Fallen / Dash")]
     [SerializeField] private float fallenDuration = 1.2f;
     [SerializeField] private float recoveryTime = 0.8f;
     [SerializeField] private float knockbackForce = 6f;
+    [SerializeField] private float dashDuration = 1.5f;
 
     [Header("Player Collision")]
     [SerializeField] private float playerCheckRadius = 0.6f;
@@ -45,36 +48,43 @@ public class PlayerController : MonoBehaviour
     public event Action OnItemUse;
     public event Action OnInteract;
 
+    // 상태 인스턴스 (상태 클래스에서 ChangeState로 참조)
+    public readonly PlayerIdleState IdleState = new PlayerIdleState();
+    public readonly PlayerRunState RunState = new PlayerRunState();
+    public readonly PlayerDashState DashState = new PlayerDashState();
+    public readonly PlayerStunState StunState = new PlayerStunState();
+    private IPlayerState _currentState;
+
     private Rigidbody _rb;
     private CapsuleCollider _col;
     private IInputProvider _input;
-
     private Vector3 _velocity;
 
     private float _stamina;
-    private bool _isSprinting;
     private bool _isGrounded;
-
     private int _currentLane;
     private float _laneChangeCooldownTimer;
-
-    private bool _isFallen;
-    private float _fallenTimer;
+    private float _jumpBufferTimer;
     private float _recoveryTimer;
     private float _recoverySpeedMult = 1f;
     private float _externalSpeedMult = 1f;
-
-
-    // 감속 코루틴 추가했습니다
-    private float _jumpBufferTimer;
     private Coroutine _slowCoroutine;
 
-    public float Stamina     => _stamina;
-    public float MaxStamina  => maxStamina;
-    public bool  IsSprinting => _isSprinting;
-    public bool  IsFallen    => _isFallen;
-    public int   CurrentLane => _currentLane;
-
+    // 외부/상태 접근용 프로퍼티
+    public IInputProvider Input => _input;
+    public float Stamina => _stamina;
+    public float MaxStamina => maxStamina;
+    public float MinSprintStamina => minSprintStamina;
+    public float SprintDrainRate => sprintDrainRate;
+    public float DashStaminaCost => dashStaminaCost;
+    public float WalkSpeed => walkSpeed;
+    public float SprintSpeed => sprintSpeed;
+    public float DashSpeed => dashSpeed;
+    public float DashDuration => dashDuration;
+    public float FallenDuration => fallenDuration;
+    public bool IsSprinting => _currentState == RunState;
+    public bool IsFallen => _currentState == StunState;
+    public int CurrentLane => _currentLane;
 
     public void Initialize(IInputProvider inputProvider) => _input = inputProvider;
 
@@ -109,14 +119,16 @@ public class PlayerController : MonoBehaviour
         {
             Debug.LogError("[PlayerController] LaneManager not found in scene! Add a LaneManager GameObject.");
             _currentLane = startLane;
-            return;
+        }
+        else
+        {
+            _currentLane = FindNearestLane(transform.position.z);
+            var pos = transform.position;
+            pos.z = LaneManager.Instance.GetLaneZ(_currentLane);
+            transform.position = pos;
         }
 
-        _currentLane = FindNearestLane(transform.position.z);
-
-        var pos = transform.position;
-        pos.z = LaneManager.Instance.GetLaneZ(_currentLane);
-        transform.position = pos;
+        ChangeState(IdleState);
     }
 
     private int FindNearestLane(float z)
@@ -148,12 +160,14 @@ public class PlayerController : MonoBehaviour
     {
         if (_input == null) return;
         if (!IsLocallySimulated()) return;
-        CheckGrounded();
-        HandleStamina();
+
+        HandleNaturalStaminaRegen();
         HandleLaneChange();
         HandleJumpInput();
         HandleItemAndInteract();
-        UpdateFallenState();
+        UpdateRecoveryMultiplier();
+
+        _currentState.UpdateState(this);
     }
 
     private void FixedUpdate()
@@ -161,11 +175,62 @@ public class PlayerController : MonoBehaviour
         if (_input == null) return;
         if (!IsLocallySimulated()) return;
 
+        CheckGrounded();
         ApplyGravity();
-        HandleMovement();
+        _currentState.FixedUpdateState(this);
         HandleLaneSnap();
         ApplyVelocity();
         CheckPlayerCollision();
+    }
+
+    // ── FSM 제어 ─────────────────────────────────────────
+
+    public void ChangeState(IPlayerState newState)
+    {
+        _currentState?.ExitState(this);
+        _currentState = newState;
+        _currentState.EnterState(this);
+    }
+
+    public void CalculateForwardVelocity(float targetBaseSpeed)
+    {
+        float target = targetBaseSpeed * _recoverySpeedMult * _externalSpeedMult;
+        float rate = (targetBaseSpeed > 0f) ? acceleration : deceleration;
+        _velocity.x = Mathf.MoveTowards(_velocity.x, target, rate * Time.fixedDeltaTime);
+    }
+
+    public void SetVelocityX(float newX) => _velocity.x = newX;
+    public void ConsumeStamina(float amount) => _stamina = Mathf.Max(0f, _stamina - amount);
+    public void StartRecoveryWindow() => _recoveryTimer = recoveryTime;
+    public void TriggerFall() => ChangeState(StunState);
+
+    public bool TryTriggerDash()
+    {
+        if (IsFallen || _currentState == DashState) return false;
+        if (_stamina < dashStaminaCost) return false;
+        ChangeState(DashState);
+        return true;
+    }
+
+    // ── 스태미나/회복 ─────────────────────────────────────
+
+    private void HandleNaturalStaminaRegen()
+    {
+        if (_currentState == RunState || _currentState == DashState) return;
+        _stamina = Mathf.Min(maxStamina, _stamina + staminaRegenRate * Time.deltaTime);
+    }
+
+    private void UpdateRecoveryMultiplier()
+    {
+        if (_recoveryTimer > 0f)
+        {
+            _recoveryTimer -= Time.deltaTime;
+            _recoverySpeedMult = Mathf.Clamp01(1f - _recoveryTimer / recoveryTime);
+        }
+        else
+        {
+            _recoverySpeedMult = 1f;
+        }
     }
 
     // ── 중력 ──────────────────────────────────────────────
@@ -178,22 +243,6 @@ public class PlayerController : MonoBehaviour
             return;
         }
         _velocity.y = Mathf.Max(_velocity.y - gravity * Time.fixedDeltaTime, -maxFallSpeed);
-    }
-
-    // ── X축 이동 (달리기) ──────────────────────────────────
-
-    private void HandleMovement()
-    {
-        // 카운트다운/관전/스폰 직후처럼 입력이 비활성화된 상태에선 자동 전진도 안 함.
-        if (_isFallen || _input is NullInputProvider)
-        {
-            _velocity.x = Mathf.MoveTowards(_velocity.x, 0f, deceleration * Time.fixedDeltaTime);
-            return;
-        }
-
-        // 자동 전진: 입력 없이 항상 앞으로. 스프린트(J 홀드)로 속도 부스트.
-        float speed = (_isSprinting ? sprintSpeed : walkSpeed) * _recoverySpeedMult * _externalSpeedMult;
-        _velocity.x = Mathf.MoveTowards(_velocity.x, speed, acceleration * Time.fixedDeltaTime);
     }
 
     // ── Z축 스냅 (라인 이동) ──────────────────────────────
@@ -236,7 +285,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleJumpInput()
     {
-        if (_isFallen) return;
+        if (IsFallen) return;
 
         if (_input.GetJumpDown())
         {
@@ -244,7 +293,6 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            // 키 입력이 없는 프레임에는 타이머 차감
             _jumpBufferTimer -= Time.deltaTime;
         }
 
@@ -252,7 +300,6 @@ public class PlayerController : MonoBehaviour
         {
             _velocity.y = jumpForce;
             _isGrounded = false;
-
             _jumpBufferTimer = 0f;
         }
     }
@@ -261,7 +308,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleLaneChange()
     {
-        if (_isFallen) return;
+        if (IsFallen) return;
         _laneChangeCooldownTimer -= Time.deltaTime;
         if (_laneChangeCooldownTimer > 0f) return;
 
@@ -285,101 +332,50 @@ public class PlayerController : MonoBehaviour
     private void CheckGrounded()
     {
         Vector3 origin = transform.position + Vector3.down * (_col.height * 0.5f - _col.radius);
+        // 낙하 속도가 빠를 때 한 fixed step에 이동 거리(|vy|*dt)보다 cast 거리가 짧으면 바닥을 놓침 → 무한 추락.
+        // groundCheckDistance를 baseline으로 두고, 필요 시 동적으로 늘려 tunneling 방지.
+        float dist = Mathf.Max(groundCheckDistance, Mathf.Abs(_velocity.y) * Time.fixedDeltaTime + 0.05f);
         _isGrounded = Physics.SphereCast(
             origin, _col.radius * 0.9f,
             Vector3.down, out var hit,
-            groundCheckDistance, groundLayer, QueryTriggerInteraction.Ignore);
+            dist, groundLayer, QueryTriggerInteraction.Ignore);
 
         if (debugGround)
-            Debug.Log($"[Grounded] origin={origin} pos.y={transform.position.y:F2} grounded={_isGrounded} hit={(hit.collider != null ? hit.collider.name : "none")}");
-    }
-
-    // ── 스태미나 ──────────────────────────────────────────
-
-    private void HandleStamina()
-    {
-        if (_input.GetSprint() && _stamina >= minSprintStamina && !_isFallen)
-        {
-            _isSprinting = true;
-            _stamina = Mathf.Max(0f, _stamina - sprintDrainRate * Time.deltaTime);
-            if (_stamina <= 0f) _isSprinting = false;
-        }
-        else
-        {
-            _isSprinting = false;
-            _stamina = Mathf.Min(maxStamina, _stamina + staminaRegenRate * Time.deltaTime);
-        }
-    }
-
-    // ── 넘어짐 ────────────────────────────────────────────
-
-    public void TriggerFall()
-    {
-        if (_isFallen) return;
-        _isFallen = true;
-        _fallenTimer = fallenDuration;
-        _recoverySpeedMult = 0f;
-        _velocity.x = 0f;
-    }
-
-    private void UpdateFallenState()
-    {
-        if (_isFallen)
-        {
-            _fallenTimer -= Time.deltaTime;
-            if (_fallenTimer <= 0f)
-            {
-                _isFallen = false;
-                _recoveryTimer = recoveryTime;
-            }
-            return;
-        }
-        if (_recoveryTimer > 0f)
-        {
-            _recoveryTimer -= Time.deltaTime;
-            _recoverySpeedMult = Mathf.Clamp01(1f - _recoveryTimer / recoveryTime);
-        }
-        else
-        {
-            _recoverySpeedMult = 1f;
-        }
+            Debug.Log($"[Grounded] origin={origin} pos.y={transform.position.y:F2} grounded={_isGrounded} dist={dist:F2} hit={(hit.collider != null ? hit.collider.name : "none")}");
     }
 
     // ── 아이템 / 상호작용 ─────────────────────────────────
 
     private void HandleItemAndInteract()
     {
-        if (_input.GetItemUse()) OnItemUse?.Invoke();
+        if (_input.GetItemUse())
+        {
+            // L키: dash 시도 우선, 추월 불가 상태면 아이템 사용 흐름으로 fallback
+            if (!TryTriggerDash()) OnItemUse?.Invoke();
+        }
         if (_input.GetInteractDown()) OnInteract?.Invoke();
     }
 
-    // ── 공개 메서드 ───────────────────────────────────────
-
-    public void SetSpeedMultiplier(float mult) => _externalSpeedMult = mult;
-    public void RecoverStamina(float amount) => _stamina = Mathf.Min(maxStamina, _stamina + amount);
-
-    // ── 플레이어 간 충돌 (OverlapSphere) ─────────────────
+    // ── 플레이어 간 충돌 (FSM에 위임) ─────────────────────
 
     private void CheckPlayerCollision()
     {
-        if (_isFallen) return;
-
         Vector3 center = transform.position + Vector3.up * (_col.height * 0.5f);
         var hits = Physics.OverlapSphere(center, playerCheckRadius, playerLayer);
 
         for (int i = 0; i < hits.Length; i++)
         {
             if (hits[i].transform == transform) continue;
-            if (!hits[i].TryGetComponent<PlayerController>(out var other)) continue;
-            if (other.IsSprinting) TriggerFall();
+            _currentState.OnCollisionCheck(this, hits[i]);
         }
     }
 
-    // ── 장애물 충돌 (Trigger 권장) ────────────────────────
+    // ── 장애물 충돌 (Trigger) ─────────────────────────────
 
     private void OnTriggerEnter(Collider col)
     {
         if (!IsLocallySimulated()) return;
+        if (IsFallen) return;
 
         if (col.TryGetComponent<ObstacleBase>(out var obstacle) && obstacle.KnockDownOnCollision)
         {
@@ -395,14 +391,14 @@ public class PlayerController : MonoBehaviour
         _velocity += dir.normalized * knockbackForce;
     }
 
+    // ── 공개 메서드 ───────────────────────────────────────
 
-    // ㅡㅡ 감속 장애물 처리 ㅡㅡ
+    public void SetSpeedMultiplier(float mult) => _externalSpeedMult = mult;
+    public void RecoverStamina(float amount) => _stamina = Mathf.Min(maxStamina, _stamina + amount);
+
     public void ApplySlow(float speedRatio, float duration)
     {
-        if (_slowCoroutine != null)
-        {
-            StopCoroutine(_slowCoroutine);
-        }
+        if (_slowCoroutine != null) StopCoroutine(_slowCoroutine);
         _slowCoroutine = StartCoroutine(SlowRoutine(speedRatio, duration));
     }
 
@@ -410,16 +406,15 @@ public class PlayerController : MonoBehaviour
     {
         _externalSpeedMult = ratio;
         yield return new WaitForSeconds(duration);
-
-        _externalSpeedMult = 1.0f;
+        _externalSpeedMult = 1f;
     }
-    
+
+    // ── 기믹: 강제 라인 변경 ──────────────────────────────
+
     private void OnGimmickForceLaneChange(int direction)
     {
-        // 1. NGO 멀티플레이 환경 소유권 필터링
         if (TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj))
         {
-            // 로컬 유저 캐릭, AI 봇(호스트 경우)에만 수정 가능
             bool isMyCharacter = netObj.IsOwner;
             bool isServerSimulatedBot = Unity.Netcode.NetworkManager.Singleton != null &&
                                         Unity.Netcode.NetworkManager.Singleton.IsServer &&
@@ -429,21 +424,17 @@ public class PlayerController : MonoBehaviour
             if (!isMyCharacter && !isServerSimulatedBot) return;
         }
 
-        // 예외 상태 처리
-        if (_isFallen) return;
+        if (IsFallen) return;
 
-        // 6레인 한계 연산 및 내부 스냅 인덱스 변경
         int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
         int targetLane = Mathf.Clamp(_currentLane + direction, 0, laneCount - 1);
 
         if (targetLane != _currentLane)
         {
             _currentLane = targetLane;
-            _laneChangeCooldownTimer = laneChangeCooldown; // 변경 직후 쿨타임 동기화
+            _laneChangeCooldownTimer = laneChangeCooldown;
 
             Debug.Log($"[{gameObject.name}] 글로벌 기믹 신호로 레인 강제 보정: {targetLane}");
         }
     }
-
-
 }
