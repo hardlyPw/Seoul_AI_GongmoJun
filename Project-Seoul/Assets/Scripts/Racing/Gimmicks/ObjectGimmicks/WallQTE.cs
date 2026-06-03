@@ -16,9 +16,31 @@ public class WallQTE : MonoBehaviour
 
     private void Start()
     {
-        var lm = LaneManager.Instance;
-        lm.FitToLaneRange(transform, minLane, maxLane);
-        if (wall != null) lm.FitToLaneRange(wall.transform, minLane, maxLane);
+        var lm  = LaneManager.Instance;
+        var pos = transform.position;
+        pos.z              = lm.GetLaneCenterZ(minLane, maxLane);
+        transform.position = pos;
+
+        if (TryGetComponent<BoxCollider>(out var col))
+        {
+            var size = col.size;
+            size.z   = lm.GetLaneSpanZ(minLane, maxLane);
+            col.size = size;
+        }
+
+        if (wall != null)
+        {
+            var wallPos = wall.transform.position;
+            wallPos.z              = lm.GetLaneCenterZ(minLane, maxLane);
+            wall.transform.position = wallPos;
+
+            if (wall.TryGetComponent<BoxCollider>(out var wallCol))
+            {
+                var size = wallCol.size;
+                size.z      = lm.GetLaneSpanZ(minLane, maxLane);
+                wallCol.size = size;
+            }
+        }
     }
 
     private class QTESession { public int step; public float timer; }
