@@ -10,28 +10,20 @@ public class OverpassZone : MonoBehaviour
 
     private void Start()
     {
-        var lm  = LaneManager.Instance;
-        var pos = transform.position;
-        pos.z              = lm.GetLaneCenterZ(minLane, maxLane);
-        transform.position = pos;
-
-        if (TryGetComponent<BoxCollider>(out var col))
-        {
-            var size = col.size;
-            size.z   = lm.GetLaneSpanZ(minLane, maxLane);
-            col.size = size;
-        }
+        LaneManager.Instance.FitToLaneRange(transform, minLane, maxLane);
     }
+
+    private const string Source = "overpass";
 
     private void OnTriggerEnter(Collider other)
     {
         if (other.TryGetComponent<PlayerController>(out var player))
-            player.SetSpeedMultiplier(speedMultiplier);
+            player.SetSpeedMultiplier(Source, speedMultiplier);
     }
 
     private void OnTriggerExit(Collider other)
     {
         if (other.TryGetComponent<PlayerController>(out var player))
-            player.SetSpeedMultiplier(1f);
+            player.ClearSpeedMultiplier(Source);
     }
 }

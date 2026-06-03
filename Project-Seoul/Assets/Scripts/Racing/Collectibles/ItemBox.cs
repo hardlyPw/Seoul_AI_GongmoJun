@@ -8,8 +8,21 @@ public class ItemBox : MonoBehaviour
 
     private void Start()
     {
+        ApplyLanePosition();
+    }
+
+    // 태풍 기믹: WeatherGimmick이 런타임에 lane을 재배정할 때 사용.
+    public void SetLaneIndex(int idx)
+    {
+        laneIndex = idx;
+        ApplyLanePosition();
+    }
+
+    private void ApplyLanePosition()
+    {
+        if (LaneManager.Instance == null) return;
         var pos = transform.position;
-        pos.z              = LaneManager.Instance.GetLaneZ(laneIndex);
+        pos.z = LaneManager.Instance.GetLaneZ(laneIndex);
         transform.position = pos;
     }
 
