@@ -12,7 +12,17 @@ public class CafeGimmick : MonoBehaviour
 
     private void Start()
     {
-        LaneManager.Instance.FitToLaneRange(transform, minLane, maxLane);
+        var lm  = LaneManager.Instance;
+        var pos = transform.position;
+        pos.z              = lm.GetLaneCenterZ(minLane, maxLane);
+        transform.position = pos;
+
+        if (TryGetComponent<BoxCollider>(out var col))
+        {
+            var size = col.size;
+            size.z   = lm.GetLaneSpanZ(minLane, maxLane);
+            col.size = size;
+        }
     }
 
     private readonly Dictionary<PlayerController, Action> _subscriptions = new();

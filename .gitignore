@@ -110,17 +110,3 @@ InitTestScene*.unity*
 
 # Visual Studio per-user config
 **/.vsconfig
-
-# Personal work-in-progress files at repo root
-/multiplayer-dev-journal.txt
-/stageExmaple.png
-/플레이업_스테이지기획서.pdf
-*.mp4
-
-# Sandbox / scratch test scenes
-/Project-Seoul/Assets/test.unity
-/Project-Seoul/Assets/test.unity.meta
-
-# Claude Code / IDE user choices
-*.choices
-*.choices.meta
