@@ -1,7 +1,13 @@
+using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class PlayerInputProvider : IInputProvider
 {
+    private const float DashDoubleTapWindow = 0.3f;
+
+    private float _lastJPressTime = -10f;
+    private bool  _firstJPressArmed;
+
     public float GetLaneChange()
     {
         var kb = Keyboard.current;
@@ -16,4 +22,23 @@ public class PlayerInputProvider : IInputProvider
     public bool GetSprint()       => Keyboard.current?.jKey.isPressed           ?? false;
     public bool GetItemUse()      => Keyboard.current?.lKey.wasPressedThisFrame ?? false;
     public bool GetInteractDown() => Keyboard.current?.qKey.wasPressedThisFrame ?? false;
+
+    // J 더블탭 감지. Update에서 1회 호출 가정 (PlayerController.Update).
+    public bool GetDashDown()
+    {
+        var kb = Keyboard.current;
+        if (kb == null || !kb.jKey.wasPressedThisFrame) return false;
+
+        float now = Time.unscaledTime;
+        if (_firstJPressArmed && (now - _lastJPressTime) <= DashDoubleTapWindow)
+        {
+            _firstJPressArmed = false;
+            _lastJPressTime = -10f;
+            return true;
+        }
+
+        _firstJPressArmed = true;
+        _lastJPressTime = now;
+        return false;
+    }
 }

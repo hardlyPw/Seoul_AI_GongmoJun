@@ -366,11 +366,8 @@ public class PlayerController : MonoBehaviour
 
     private void HandleItemAndInteract()
     {
-        if (_input.GetItemUse())
-        {
-            // L키: dash 시도 우선, 추월 불가 상태면 아이템 사용 흐름으로 fallback
-            if (!TryTriggerDash()) OnItemUse?.Invoke();
-        }
+        if (_input.GetDashDown())     TryTriggerDash();
+        if (_input.GetItemUse())      OnItemUse?.Invoke();
         if (_input.GetInteractDown()) OnInteract?.Invoke();
     }
 
