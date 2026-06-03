@@ -237,6 +237,10 @@ public class PlayerController : MonoBehaviour
     {
         if (_currentState == StunState) return; // 스턴 상태 면역(무적) 유지
 
+        // 아이템 관련 수정
+        // [추가] 킥보드 및 택시 돌진(IsItemDashing) 중에는 일반 장애물 충돌 판정을 무시
+        if (TryGetComponent<NetworkItemInventory>(out var inv) && inv.IsItemDashing) return;
+
         if (col.TryGetComponent<ObstacleBase>(out var obstacle) && obstacle.KnockDownOnCollision)
         {
             TriggerFall();
@@ -300,6 +304,10 @@ public class PlayerController : MonoBehaviour
     private void HandleLaneChange()
     {
         if (_isFallen) return;
+        // 아이템 관련 수정
+        // [추가] 택시 아이템 작동 중일 때 플레이어의 좌우 레인 변경 입력을 강제로 차단
+        if (TryGetComponent<NetworkItemInventory>(out var inv) && inv.IsLaneLocked) return;
+
         _laneChangeCooldownTimer -= Time.deltaTime;
         if (_laneChangeCooldownTimer > 0f) return;
 
@@ -521,5 +529,11 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-
+    // 아이템 관련 수정
+    // 택시 아이템 사용 시 중앙 레인으로 강제 이동
+    public void ForceSetLane(int laneIndex)
+    {
+        int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
+        _currentLane = Mathf.Clamp(laneIndex, 0, laneCount - 1);
+    }
 }
