@@ -22,10 +22,6 @@ namespace Seoul.Network.Game
         [Header("Camera")]
         [SerializeField] private bool attachCameraOnSpawn = true;
 
-        public NetworkVariable<int> Score = new(
-            0,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server);
 
         public NetworkVariable<bool> HasFinished = new(
             false,
@@ -60,13 +56,6 @@ namespace Seoul.Network.Game
         private float _spectatePollTimer = 0f;
         private const float SpectatePollInterval = 0.5f;
 
-        public void AddScore(int amount)
-        {
-            if (!IsServer) return;
-            Score.Value += amount;
-            Debug.Log($"[NetworkPlayer] clientId={OwnerClientId} score={Score.Value} (+{amount})");
-        }
-
         public void MarkFinished(int rank)
         {
             if (!IsServer) return;
@@ -85,8 +74,11 @@ namespace Seoul.Network.Game
             }
             if (HasFinished.Value) return;
 
-            if (SessionScoreStore.Instance != null)
-                SessionScoreStore.Instance.SetScore(OwnerClientId, Score.Value);
+            if (TryGetComponent<PlayerScore>(out var playerScore))
+            {
+                if (SessionScoreStore.Instance != null)
+                    SessionScoreStore.Instance.SetScore(OwnerClientId, playerScore.Score.Value);
+            }
 
             // NetworkRaceManager가 살아있고 NGO-spawn된 경우에만 위임 (스테이지 1)
             bool useRaceManager = NetworkRaceManager.Instance != null
@@ -109,7 +101,7 @@ namespace Seoul.Network.Game
         }
 
         private static void TryAdvanceToResult()
-        {
+{
             if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer) return;
             if (All.Count == 0) return;
             foreach (var p in All)
@@ -117,7 +109,42 @@ namespace Seoul.Network.Game
                 if (p == null) continue;
                 if (!p.IsFullyFinished.Value) return;
             }
-            Debug.Log("[NetworkPlayer] All players fully finished — loading Result scene via NGO.");
+            
+            Debug.Log("[NetworkPlayer] All players fully finished — Sorting scores via PlayerScore and filling Broadcaster.");
+
+            // [수정] 결과 창 집계 시 PlayerScore 기반 정렬 후 Broadcaster에 바인딩
+            var broadcaster = NetworkResultBroadcaster.Instance;
+            if (broadcaster != null && broadcaster.Entries != null)
+            {
+                broadcaster.Entries.Clear();
+
+                var sortedPlayers = new List<NetworkPlayer>(All);
+                sortedPlayers.Sort((a, b) =>
+                {
+                    int scoreA = a.TryGetComponent<PlayerScore>(out var sA) ? sA.Score.Value : 0;
+                    int scoreB = b.TryGetComponent<PlayerScore>(out var sB) ? sB.Score.Value : 0;
+                    return scoreB.CompareTo(scoreA); // 내림차순 정렬
+                });
+
+                for (int i = 0; i < sortedPlayers.Count; i++)
+                {
+                    var p = sortedPlayers[i];
+                    if (p == null) continue;
+
+                    int finalScore = p.TryGetComponent<PlayerScore>(out var s) ? s.Score.Value : 0;
+
+                    ResultEntry entry = new ResultEntry
+                    {
+                        ClientId = p.OwnerClientId,
+                        Score = finalScore,
+                        FinalRank = i + 1
+                    };
+
+                    broadcaster.Entries.Add(entry);
+                }
+            }
+
+            Debug.Log("[NetworkPlayer] Loading Result scene via NGO.");
             NetworkManager.Singleton.SceneManager.LoadScene(ResultSceneName, LoadSceneMode.Single);
         }
 
@@ -137,13 +164,6 @@ namespace Seoul.Network.Game
             CurrentScene.Value = scene;
         }
 
-        [ServerRpc(RequireOwnership = false)]
-        public void ReportLocalScorePickupServerRpc(int amount, ServerRpcParams rpcParams = default)
-        {
-            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
-            if (amount <= 0) return;
-            AddScore(amount);
-        }
 
         // ─── 로컬 로드 씬용 아이템 소비 동기화 ─────────────────
 
@@ -210,11 +230,6 @@ namespace Seoul.Network.Game
             DontDestroyOnLoad(gameObject);
             CacheVisuals();
 
-            if (IsServer)
-            {
-                var store = SessionScoreStore.Instance;
-                if (store != null) Score.Value = store.GetScore(OwnerClientId);
-            }
 
             if (IsOwner)
             {
@@ -229,8 +244,9 @@ namespace Seoul.Network.Game
                 if (ownerVisualMarker != null) ownerVisualMarker.SetActive(false);
             }
 
-            Debug.Log($"[NetworkPlayer] Spawned. OwnerClientId={OwnerClientId} IsOwner={IsOwner} LocalClientId={NetworkManager.Singleton.LocalClientId} pos={transform.position} restoredScore={Score.Value}");
-
+            int currentScore = TryGetComponent<PlayerScore>(out var s) ? s.Score.Value : 0;
+            Debug.Log($"[NetworkPlayer] Spawned. OwnerClientId={OwnerClientId} IsOwner={IsOwner} LocalClientId={NetworkManager.Singleton.LocalClientId} pos={transform.position} restoredScore={currentScore}");
+            
             if (NetworkRaceManager.Instance != null)
                 NetworkRaceManager.Instance.State.OnValueChanged += OnRaceStateChanged;
 
@@ -497,7 +513,10 @@ namespace Seoul.Network.Game
 
             if (isSuccess)
             {
-                AddScore(scoreToAdd);
+                if (TryGetComponent<PlayerScore>(out var playerScore))
+                {
+                    playerScore.AddScore(scoreToAdd); // ⭕ PlayerScore를 통해 추가
+                }
                 ExecuteQteSuccessAction(actionType);
             }
             else
