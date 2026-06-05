@@ -194,4 +194,15 @@ public class NetworkItemInventory : NetworkBehaviour
             }
         }
     }
+
+    // [자전거 스테이지 기믹용 추가]: 클라이언트(Owner)가 QTE 성공 시 서버 공간에서 점수를 합산하도록 지시하는 RPC
+    [ServerRpc]
+    public void RequestAddScoreServerRpc(int amount)
+    {
+        if (ScoreManager.Instance != null && _player != null)
+        {
+            ScoreManager.Instance.AddScore(_player, amount);
+            Debug.Log($"[SERVER] QTE 성공 신호 접수 완료 -> '{gameObject.name}'에게 {amount}pt 동기화 복사 진행");
+        }
+    }
 }
