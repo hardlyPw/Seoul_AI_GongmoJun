@@ -12,7 +12,7 @@ namespace Seoul.Network.Game
         public static readonly List<NetworkPlayer> All = new();
 
         // 최종 스테이지에 도달한 뒤의 골인이 "완전 종료"로 인정됨.
-        private const string FinalStageName  = "05_Stage_Bicycle";
+        private const string FinalStageName = "05_Stage_Bicycle";
         private const string ResultSceneName = "06_Result";
 
         [Header("References")]
@@ -52,13 +52,13 @@ namespace Seoul.Network.Game
 
         private Renderer[] _cachedRenderers;
         private Collider[] _cachedColliders;
-        private bool       _visualEnabled = true;
+        private bool _visualEnabled = true;
 
         // 스펙테이트 상태
-        private bool          _isSpectating       = false;
-        private NetworkPlayer _spectateTarget     = null;
-        private float         _spectatePollTimer  = 0f;
-        private const float   SpectatePollInterval = 0.5f;
+        private bool _isSpectating = false;
+        private NetworkPlayer _spectateTarget = null;
+        private float _spectatePollTimer = 0f;
+        private const float SpectatePollInterval = 0.5f;
 
         public void AddScore(int amount)
         {
@@ -71,7 +71,7 @@ namespace Seoul.Network.Game
         {
             if (!IsServer) return;
             HasFinished.Value = true;
-            FinishRank.Value  = rank;
+            FinishRank.Value = rank;
         }
 
         [ServerRpc(RequireOwnership = false)]
@@ -127,7 +127,7 @@ namespace Seoul.Network.Game
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             if (IsFullyFinished.Value) return; // 스펙테이터는 리셋하지 않음
             HasFinished.Value = false;
-            FinishRank.Value  = 0;
+            FinishRank.Value = 0;
         }
 
         [ServerRpc(RequireOwnership = false)]
@@ -153,7 +153,7 @@ namespace Seoul.Network.Game
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             if (SessionScoreStore.Instance == null) return;
 
-            string s  = sceneName.ToString();
+            string s = sceneName.ToString();
             string id = itemId.ToString();
             bool added = SessionScoreStore.Instance.MarkItemConsumed(s, id);
             if (!added) return; // 이미 기록된 거면 broadcast 안 함
@@ -234,10 +234,10 @@ namespace Seoul.Network.Game
             if (NetworkRaceManager.Instance != null)
                 NetworkRaceManager.Instance.State.OnValueChanged += OnRaceStateChanged;
 
-            HasFinished.OnValueChanged     += OnHasFinishedChanged;
-            CurrentScene.OnValueChanged    += OnCurrentSceneChanged;
+            HasFinished.OnValueChanged += OnHasFinishedChanged;
+            CurrentScene.OnValueChanged += OnCurrentSceneChanged;
             IsFullyFinished.OnValueChanged += OnIsFullyFinishedChanged;
-            SceneManager.sceneLoaded       += OnSceneLoadedLocal;
+            SceneManager.sceneLoaded += OnSceneLoadedLocal;
 
             RefreshInputForLocalState();
             RefreshAllVisibility();
@@ -256,10 +256,10 @@ namespace Seoul.Network.Game
             if (NetworkRaceManager.Instance != null)
                 NetworkRaceManager.Instance.State.OnValueChanged -= OnRaceStateChanged;
 
-            HasFinished.OnValueChanged     -= OnHasFinishedChanged;
-            CurrentScene.OnValueChanged    -= OnCurrentSceneChanged;
+            HasFinished.OnValueChanged -= OnHasFinishedChanged;
+            CurrentScene.OnValueChanged -= OnCurrentSceneChanged;
             IsFullyFinished.OnValueChanged -= OnIsFullyFinishedChanged;
-            SceneManager.sceneLoaded       -= OnSceneLoadedLocal;
+            SceneManager.sceneLoaded -= OnSceneLoadedLocal;
         }
 
         private void Update()
@@ -484,6 +484,42 @@ namespace Seoul.Network.Game
                 mainCam.transform.localPosition = new Vector3(0f, 3f, -6f);
                 mainCam.transform.localRotation = Quaternion.Euler(15f, 0f, 0f);
             }
+        }
+
+        // ─── NetworkPlayer 내부의 QTE 처리 세션 ──────────────────────────────────
+
+        [ServerRpc(RequireOwnership = false)]
+        public void RequestQTEResultServerRpc(bool isSuccess, int scoreToAdd, BaseQTE.QteActionType actionType, ServerRpcParams rpcParams = default)
+        {
+            // 🌟 구버전 방식인 Receive.SenderClientId로 보안 검증
+            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+            if (IsFullyFinished.Value) return;
+
+            if (isSuccess)
+            {
+                AddScore(scoreToAdd);
+                ExecuteQteSuccessAction(actionType);
+            }
+            else
+            {
+                NotifyPlayerQTEFailureClientRpc(actionType);
+            }
+        }
+
+        private void ExecuteQteSuccessAction(BaseQTE.QteActionType actionType)
+        {
+            // 성공 시 필요한 기믹별 액션 처리 (가속 등)
+        }
+
+        [ClientRpc] // 🌟 클라이언트 RPC는 기존 규격 유지
+        private void NotifyPlayerQTEFailureClientRpc(BaseQTE.QteActionType actionType)
+        {
+            if (controller == null) return;
+
+            Debug.Log($"[QTE 실패] Client {OwnerClientId}가 {actionType} 기믹 실패로 스턴 상태에 진입합니다.");
+
+            // 실패 시 확실하게 스턴(넘어짐) 처리
+            controller.TriggerFall();
         }
     }
 }
