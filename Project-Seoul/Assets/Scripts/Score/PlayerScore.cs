@@ -1,7 +1,6 @@
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
-using System;
 
 namespace Seoul.Network.Game
 {
@@ -23,28 +22,48 @@ namespace Seoul.Network.Game
         }
 
         /// <summary>
-        /// 서버에서 직접 점수를 추가할 때 사용
+        /// ? 다른 작업자분들은 이 메서드 하나만 호출하시면 됩니다!
+        /// 씬 종류와 권한을 자동으로 체크하여 점수를 안전하게 추가합니다.
         /// </summary>
         public void AddScore(int amount)
         {
-            if (!IsServer) return;
-            Score.Value += amount;
-            Debug.Log($"[PlayerScore] clientId={OwnerClientId} score={Score.Value} (+{amount})");
+            if (amount <= 0) return;
+
+            // 이미 골인해서 완전히 끝난 상태라면 점수 처리를 무시합니다.
+            if (TryGetComponent<NetworkPlayer>(out var player) && player.IsFullyFinished.Value) return;
+
+            // [대원칙 1] NGO 동기화 씬 (Stage 1)인 경우
+            if (IsSpawned)
+            {
+                // 실시간 동기화 씬에서는 '서버'만 직접 점수를 올릴 수 있습니다.
+                if (IsServer)
+                {
+                    Score.Value += amount;
+                    Debug.Log($"[PlayerScore] Stage1 - clientId={OwnerClientId} score={Score.Value} (+{amount})");
+                }
+            }
+            // [대원칙 2] 로컬 로드 씬 (Stage 2/3)인 경우
+            else
+            {
+                // 로컬 씬에서는 '내 화면(Owner)'에서 아이템을 먹었을 때만 서버에 RPC로 요청합니다.
+                if (TryGetComponent<NetworkPlayer>(out var netPlayer) && netPlayer.IsOwner)
+                {
+                    ReportLocalScorePickupServerRpc(amount);
+                }
+            }
         }
 
         /// <summary>
-        /// 클라이언트(아이템 픽업 등)에서 점수 추가를 요청할 때 사용
+        /// 로컬 로드 씬(Stage 2/3)에서 클라이언트가 서버에 점수 반영을 요청하는 RPC
         /// </summary>
         [ServerRpc(RequireOwnership = false)]
-        public void ReportLocalScorePickupServerRpc(int amount, ServerRpcParams rpcParams = default)
+        private void ReportLocalScorePickupServerRpc(int amount, ServerRpcParams rpcParams = default)
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             if (amount <= 0) return;
 
-            // 이미 골인해서 완전히 끝난 상태인지 체크하고 싶다면 NetworkPlayer를 참조할 수 있습니다.
-            if (TryGetComponent<NetworkPlayer>(out var player) && player.IsFullyFinished.Value) return;
-
-            AddScore(amount);
+            Score.Value += amount;
+            Debug.Log($"[PlayerScore] Stage2/3 RPC - clientId={OwnerClientId} score={Score.Value} (+{amount})");
         }
     }
 }
