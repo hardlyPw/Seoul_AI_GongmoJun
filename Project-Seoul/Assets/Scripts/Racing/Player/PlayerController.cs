@@ -53,6 +53,7 @@ public class PlayerController : MonoBehaviour
     public readonly PlayerRunState RunState = new PlayerRunState();
     public readonly PlayerDashState DashState = new PlayerDashState();
     public readonly PlayerStunState StunState = new PlayerStunState();
+    public readonly PlayerAirborneState AirborneState = new PlayerAirborneState();
     private IPlayerState _currentState;
 
 
@@ -149,6 +150,8 @@ public class PlayerController : MonoBehaviour
         HandleLaneChange();
         HandleJumpInput();
         HandleItemAndInteract();
+        HandleSlipstreamCheck();
+
         //UpdateFallenState();
         HandleItemAndInteract();
         UpdateRecoveryMultiplier();
@@ -237,6 +240,10 @@ public class PlayerController : MonoBehaviour
     {
         if (_currentState == StunState) return; // 스턴 상태 면역(무적) 유지
 
+        // 아이템 관련 수정
+        // [추가] 킥보드 및 택시 돌진(IsItemDashing) 중에는 일반 장애물 충돌 판정을 무시
+        if (TryGetComponent<NetworkItemInventory>(out var inv) && inv.IsItemDashing) return;
+
         if (col.TryGetComponent<ObstacleBase>(out var obstacle) && obstacle.KnockDownOnCollision)
         {
             TriggerFall();
@@ -300,12 +307,27 @@ public class PlayerController : MonoBehaviour
     private void HandleLaneChange()
     {
         if (_isFallen) return;
+        if (_currentState == AirborneState) return;
+        // 아이템 관련 수정
+        // [추가] 택시 아이템 작동 중일 때 플레이어의 좌우 레인 변경 입력을 강제로 차단
+        if (TryGetComponent<NetworkItemInventory>(out var inv) && inv.IsLaneLocked) return;
+
         _laneChangeCooldownTimer -= Time.deltaTime;
         if (_laneChangeCooldownTimer > 0f) return;
 
         int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
 
         float v = _input.GetLaneChange();
+        // 자전거 도로 보행자 도로 분할
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "05_Stage_Bicycle" && transform.position.x > 50f)
+        {
+            // 조건 A: 자전거 도로(0~2)에서 보행자 도로(3~5)로 넘어가려는 변경 시도 원천 차단
+            if (_currentLane == 2 && v < -0.5f) return;
+
+            // 조건 B: 보행자 도로(3~5)에서 자전거 도로(0~2)로 가로지르려는 변경 시도 원천 차단
+            if (_currentLane == 3 && v > 0.5f) return;
+        }
+
         if (v > 0.5f && _currentLane > 0)
         {
             _currentLane--;
@@ -523,5 +545,51 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    // 아이템 관련 수정
+    // 택시 아이템 사용 시 중앙 레인으로 강제 이동
+    public void ForceSetLane(int laneIndex)
+    {
+        int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
+        _currentLane = Mathf.Clamp(laneIndex, 0, laneCount - 1);
+    }
+
+    private void HandleSlipstreamCheck()
+    {
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "05_Stage_Bicycle") return;
+        if (TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj) && !netObj.IsOwner) return;
+        if (_currentState != RunState) return; // 오직 달리기를 사용하는 상태에서만 소모 감면 유효
+
+        bool isInSlipstreamZone = false;
+        float maxTrackDistance = 8f; // 동등 차선 내 허용 최대 임계 거리 8m
+
+        // 현재 씬에 생성된 모든 플레이어 컨트롤러 객체를 탐색하여 전방 추종 대상 비교
+        PlayerController[] allPlayers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        foreach (var other in allPlayers)
+        {
+            if (other == this) continue;
+            if (other.IsFallen) continue;
+
+            // 동일한 라인에 정렬되어 있는지 검증
+            if (other.CurrentLane == this._currentLane)
+            {
+                float distanceX = other.transform.position.x - this.transform.position.x;
+
+                // 상대방이 내 앞에 있고(distanceX > 0) 허용 기준 내에 들어온 경우 슬립 스트림 적용
+                if (distanceX > 0f && distanceX <= maxTrackDistance)
+                {
+                    isInSlipstreamZone = true;
+                    break;
+                }
+            }
+        }
+
+        if (isInSlipstreamZone)
+        {
+            // 슬립 스트림 영역 안에서는 달리기를 유지해도 스태미나가 소모되지 않도록 
+            _stamina = Mathf.Min(maxStamina, _stamina + sprintDrainRate * Time.deltaTime);
+        }
+    }
+
+    public void SetVelocityY(float newY) => _velocity.y = newY;
 
 }
