@@ -57,7 +57,7 @@ namespace Seoul.Network.Game
         /// 로컬 로드 씬(Stage 2/3)에서 클라이언트가 서버에 점수 반영을 요청하는 RPC
         /// </summary>
         [ServerRpc(RequireOwnership = false)]
-        private void ReportLocalScorePickupServerRpc(int amount, ServerRpcParams rpcParams = default)
+        public void ReportLocalScorePickupServerRpc(int amount, ServerRpcParams rpcParams = default)
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             if (amount <= 0) return;

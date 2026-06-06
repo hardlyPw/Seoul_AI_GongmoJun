@@ -17,7 +17,6 @@ GameObject:
   - component: {fileID: 6267397090953133657}
   - component: {fileID: 6586932174518866934}
   - component: {fileID: 7031459225403562420}
-  - component: {fileID: 4011263331662967566}
   m_Layer: 7
   m_Name: Player
   m_TagString: Player
@@ -276,11 +275,6 @@ MonoBehaviour:
   controller: {fileID: 6586932174518866934}
   ownerVisualMarker: {fileID: 0}
   attachCameraOnSpawn: 1
-  Score:
-    UpdateTraits:
-      MinSecondsBetweenUpdates: 0
-      MaxSecondsBetweenUpdates: 0
-    m_InternalValue: 0
   HasFinished:
     UpdateTraits:
       MinSecondsBetweenUpdates: 0
@@ -368,16 +362,3 @@ MonoBehaviour:
       MinSecondsBetweenUpdates: 0
       MaxSecondsBetweenUpdates: 0
     m_InternalValue: 0
---- !u!114 &4011263331662967566
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5633554692639426554}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9dc145aa4177a6b42820a131706463fa, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PlayerScore
-  ShowTopMostFoldoutHeaderGroup: 1
