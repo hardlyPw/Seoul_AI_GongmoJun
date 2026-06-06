@@ -151,6 +151,7 @@ public class PlayerController : MonoBehaviour
         HandleJumpInput();
         HandleItemAndInteract();
         HandleSlipstreamCheck();
+
         //UpdateFallenState();
         HandleItemAndInteract();
         UpdateRecoveryMultiplier();
@@ -470,7 +471,9 @@ public class PlayerController : MonoBehaviour
 
     private void HandleItemAndInteract()
     {
-        if (_input.GetItemUse()) OnItemUse?.Invoke();
+
+        if (_input.GetDashDown())     TryTriggerDash();
+        if (_input.GetItemUse())      OnItemUse?.Invoke();
         if (_input.GetInteractDown()) OnInteract?.Invoke();
     }
 
@@ -588,4 +591,5 @@ public class PlayerController : MonoBehaviour
     }
 
     public void SetVelocityY(float newY) => _velocity.y = newY;
+
 }
