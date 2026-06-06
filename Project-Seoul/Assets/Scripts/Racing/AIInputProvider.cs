@@ -1,4 +1,4 @@
-﻿public class AIInputProvider : IInputProvider
+public class AIInputProvider : IInputProvider
 {
     private float _lane;
     private bool  _jump;
@@ -20,5 +20,4 @@
     public bool  GetSprint()       => _sprint;
     public bool  GetItemUse()      => _item;
     public bool  GetInteractDown() => _interact;
-    public bool GetQTEKeyDown(UnityEngine.InputSystem.Key key) => false;
 }
