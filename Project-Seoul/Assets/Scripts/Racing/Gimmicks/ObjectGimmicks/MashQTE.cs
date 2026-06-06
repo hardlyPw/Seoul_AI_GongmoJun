@@ -1,3 +1,4 @@
+﻿/*
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Seoul.Network.Game;
@@ -42,3 +43,4 @@ public class MashQTE : BaseQTE
         if (targetVisualObject != null) targetVisualObject.SetActive(false);
     }
 }
+*/

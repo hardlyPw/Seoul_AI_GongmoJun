@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using Seoul.Network.Game;
+using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
@@ -121,7 +122,11 @@ public class PlayerAirborneState : IPlayerState
         Debug.Log($"[QTE] 5회 연속 커맨드 입력 성공! 묘기 추가 스코어 +30pt 획득 요청 전송");
         if (player.TryGetComponent<NetworkItemInventory>(out var inventory))
         {
-            inventory.RequestAddScoreServerRpc(30);
+            var playerScore = player.GetComponent<PlayerScore>();
+            if (playerScore != null)
+            {
+                playerScore.AddScore(30);
+            }
         }
     }
 }

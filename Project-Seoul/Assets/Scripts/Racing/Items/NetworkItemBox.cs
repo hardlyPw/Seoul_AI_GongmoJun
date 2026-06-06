@@ -6,18 +6,36 @@ public class NetworkItemBox : NetworkBehaviour
 {
     private void OnTriggerEnter(Collider other)
     {
-        if (!IsServer) return;
-
-        if (other.CompareTag("Player"))
+        if (NetworkObject.IsSpawned)
         {
+            if (!IsServer) return;
+
+            if (other.CompareTag("Player"))
+            {
+                var inventory = other.GetComponent<NetworkItemInventory>();
+                // 인벤토리가 존재하고 슬롯이 완전히 비어있을 때만 아이템 획득 승인
+                if (inventory != null && inventory.currentItem.Value == ItemType.None)
+                {
+                    ItemType droppedItem = GetRandomItemByRank(other.transform.position.x);
+                    if (inventory.TryPickup(droppedItem))
+                    {
+                        GetComponent<NetworkObject>().Despawn(); // 재생성 없이 즉시 파괴
+                    }
+                }
+            }
+
+        }
+        else
+        {
+            // 로컬 씬 (2~3스테이지): 클라이언트에서 직접 처리
+            if (!other.CompareTag("Player")) return;
             var inventory = other.GetComponent<NetworkItemInventory>();
-            // 인벤토리가 존재하고 슬롯이 완전히 비어있을 때만 아이템 획득 승인
             if (inventory != null && inventory.currentItem.Value == ItemType.None)
             {
-                ItemType droppedItem = GetRandomItemByRank(other.transform.position.x);
-                if (inventory.TryPickup(droppedItem))
+                ItemType item = GetRandomItemByRank(other.transform.position.x);
+                if (inventory.TryPickupLocal(item))
                 {
-                    GetComponent<NetworkObject>().Despawn(); // 재생성 없이 즉시 파괴
+                    gameObject.SetActive(false);
                 }
             }
         }

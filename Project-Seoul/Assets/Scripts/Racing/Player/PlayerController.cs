@@ -319,7 +319,7 @@ public class PlayerController : MonoBehaviour
 
         float v = _input.GetLaneChange();
         // 자전거 도로 보행자 도로 분할
-        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "05_Stage_Bicycle" && transform.position.x > 50f)
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "05_Stage_Bicycle" && transform.position.x > 125f)
         {
             // 조건 A: 자전거 도로(0~2)에서 보행자 도로(3~5)로 넘어가려는 변경 시도 원천 차단
             if (_currentLane == 2 && v < -0.5f) return;

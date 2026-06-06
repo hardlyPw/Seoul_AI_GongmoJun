@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
@@ -101,7 +101,7 @@ namespace Seoul.Network.Game
         }
 
         private static void TryAdvanceToResult()
-{
+        {
             if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer) return;
             if (All.Count == 0) return;
             foreach (var p in All)
@@ -109,7 +109,7 @@ namespace Seoul.Network.Game
                 if (p == null) continue;
                 if (!p.IsFullyFinished.Value) return;
             }
-            
+
             Debug.Log("[NetworkPlayer] All players fully finished — Sorting scores via PlayerScore and filling Broadcaster.");
 
             // [수정] 결과 창 집계 시 PlayerScore 기반 정렬 후 Broadcaster에 바인딩
@@ -246,7 +246,7 @@ namespace Seoul.Network.Game
 
             int currentScore = TryGetComponent<PlayerScore>(out var s) ? s.Score.Value : 0;
             Debug.Log($"[NetworkPlayer] Spawned. OwnerClientId={OwnerClientId} IsOwner={IsOwner} LocalClientId={NetworkManager.Singleton.LocalClientId} pos={transform.position} restoredScore={currentScore}");
-            
+
             if (NetworkRaceManager.Instance != null)
                 NetworkRaceManager.Instance.State.OnValueChanged += OnRaceStateChanged;
 
@@ -502,6 +502,7 @@ namespace Seoul.Network.Game
             }
         }
 
+        /*
         // ─── NetworkPlayer 내부의 QTE 처리 세션 ──────────────────────────────────
 
         [ServerRpc(RequireOwnership = false)]
@@ -540,5 +541,7 @@ namespace Seoul.Network.Game
             // 실패 시 확실하게 스턴(넘어짐) 처리
             controller.TriggerFall();
         }
+    }
+        */
     }
 }

@@ -1,4 +1,4 @@
-
+﻿
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -27,6 +27,7 @@ public class PlayerInputProvider : IInputProvider
     {
         if (Keyboard.current == null) return false;
         return Keyboard.current[key].wasPressedThisFrame;
+    }
 
     // J 더블탭 감지. Update에서 1회 호출 가정 (PlayerController.Update).
     public bool GetDashDown()

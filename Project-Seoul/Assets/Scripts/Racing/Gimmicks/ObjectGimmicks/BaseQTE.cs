@@ -1,3 +1,4 @@
+﻿/*
 using UnityEngine;
 using Seoul.Network.Game;
 
@@ -157,3 +158,4 @@ public abstract class BaseQTE : MonoBehaviour
         }
     }
 }
+*/

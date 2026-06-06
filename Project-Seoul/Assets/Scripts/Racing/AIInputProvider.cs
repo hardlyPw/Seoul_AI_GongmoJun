@@ -21,4 +21,6 @@
     public bool  GetItemUse()      => _item;
     public bool  GetInteractDown() => _interact;
     public bool GetQTEKeyDown(UnityEngine.InputSystem.Key key) => false;
+    public bool GetDashDown() => false;
+
 }

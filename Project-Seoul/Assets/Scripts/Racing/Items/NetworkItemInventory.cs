@@ -1,6 +1,7 @@
-﻿using UnityEngine;
-using Unity.Netcode;
+using Seoul.Network.Game;
 using System.Collections;
+using Unity.Netcode;
+using UnityEngine;
 
 public enum ItemType { None, Coffee, AlarmClock, Coin, Kickboard, Taxi }
 
@@ -44,6 +45,22 @@ public class NetworkItemInventory : NetworkBehaviour
         return true;
     }
 
+    // 로컬 씬(2~3스테이지)용 — 클라이언트가 서버에 획득 요청
+    public bool TryPickupLocal(ItemType item)
+    {
+        if (currentItem.Value != ItemType.None) return false;
+        RequestPickupLocalServerRpc(item);
+        return true;
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    private void RequestPickupLocalServerRpc(ItemType item)
+    {
+        if (currentItem.Value != ItemType.None) return;
+        currentItem.Value = item;
+        Debug.Log($"[SERVER-LOCAL] 플레이어 '{gameObject.name}'이(가) 아이템 '{item}'을(를) 획득했습니다.");
+    }
+
     [ClientRpc]
     private void NotifyPickupClientRpc(ItemType item)
     {
@@ -74,7 +91,11 @@ public class NetworkItemInventory : NetworkBehaviour
         {
             if (ScoreManager.Instance != null)
             {
-                ScoreManager.Instance.AddScore(_player, 10);
+                var playerScore = GetComponent<PlayerScore>();
+                if (playerScore != null)
+                {
+                    playerScore.AddScore(10);
+                }
             }
         }
 
