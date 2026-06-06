@@ -39,7 +39,15 @@ namespace Seoul.Network.Game
                 if (p.IsOwner) { me = p; break; }
             }
 
-            myScoreText.text = me != null ? $"Score: {me.Score.Value}" : "Score: 0";
+            // [수정 완료] 내 NetworkPlayer 오브젝트에서 PlayerScore 컴포넌트를 찾아 점수 출력
+            if (me != null && me.TryGetComponent<PlayerScore>(out var playerScore))
+            {
+                myScoreText.text = $"Score: {playerScore.Score.Value}";
+            }
+            else
+            {
+                myScoreText.text = "Score: 0";
+            }
         }
 
         private void UpdateScoreboard()
@@ -49,7 +57,14 @@ namespace Seoul.Network.Game
             {
                 if (p != null) _sorted.Add(p);
             }
-            _sorted.Sort((a, b) => b.Score.Value.CompareTo(a.Score.Value));
+
+            // [수정 완료] 각 플레이어가 가진 PlayerScore의 Score.Value 값을 비교하여 정렬
+            _sorted.Sort((a, b) =>
+            {
+                int scoreA = a.TryGetComponent<PlayerScore>(out var sA) ? sA.Score.Value : 0;
+                int scoreB = b.TryGetComponent<PlayerScore>(out var sB) ? sB.Score.Value : 0;
+                return scoreB.CompareTo(scoreA); // 내림차순 정렬
+            });
 
             for (int i = 0; i < scoreboardEntries.Length; i++)
             {
@@ -58,9 +73,13 @@ namespace Seoul.Network.Game
 
                 if (i < _sorted.Count)
                 {
-                    var p    = _sorted[i];
+                    var p = _sorted[i];
+                    
+                    // [수정 완료] 화면에 표시할 개별 플레이어의 최종 점수 파싱
+                    int finalScore = p.TryGetComponent<PlayerScore>(out var s) ? s.Score.Value : 0;
+                    
                     string label = p.IsOwner ? $"P{p.OwnerClientId} (You)" : $"P{p.OwnerClientId}";
-                    entry.text = $"{i + 1}. {label}  -  {p.Score.Value}";
+                    entry.text = $"{i + 1}. {label}  -  {finalScore}";
                 }
                 else
                 {

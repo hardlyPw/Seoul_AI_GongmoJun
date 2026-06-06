@@ -8,9 +8,9 @@ namespace Seoul.Network.Game
     [RequireComponent(typeof(Collider))]
     public class NetworkScoreItem : NetworkBehaviour
     {
-        [SerializeField] private int  scoreValue   = 10;
-        [SerializeField] private int  laneIndex    = 0;
-        [SerializeField] private bool alignToLane  = true;
+        [SerializeField] private int   scoreValue   = 10;
+        [SerializeField] private int   laneIndex    = 0;
+        [SerializeField] private bool  alignToLane  = true;
 
         private bool   _localConsumed     = false;
         private string _itemId            = "";
@@ -71,6 +71,7 @@ namespace Seoul.Network.Game
 
         private void OnTriggerEnter(Collider other)
         {
+            // 충돌 감지 자체는 여전히 NetworkPlayer(부모 또는 본인)가 맞는지 체크용으로 사용합니다.
             var netPlayer = other.GetComponentInParent<NetworkPlayer>();
             if (netPlayer == null) return;
 
@@ -79,7 +80,12 @@ namespace Seoul.Network.Game
                 // NGO 동기화된 씬 (Stage 1): 서버 권한 처리
                 if (!IsServer) return;
 
-                netPlayer.AddScore(scoreValue);
+                // [수정 완료] NetworkPlayer가 아닌 분리된 PlayerScore 컴포넌트를 가져와 점수 추가
+                if (netPlayer.TryGetComponent<PlayerScore>(out var playerScore))
+                {
+                    playerScore.AddScore(scoreValue);
+                }
+                
                 HideClientRpc();
                 NetworkObject.Despawn(false);
             }
@@ -90,7 +96,13 @@ namespace Seoul.Network.Game
                 if (_localConsumed) return;
                 _localConsumed = true;
 
-                netPlayer.ReportLocalScorePickupServerRpc(scoreValue);
+                // [수정 완료] PlayerScore 컴포넌트를 찾아 이사 간 ServerRpc를 안전하게 요청
+                if (netPlayer.TryGetComponent<PlayerScore>(out var playerScore))
+                {
+                    playerScore.ReportLocalScorePickupServerRpc(scoreValue);
+                }
+
+                // 아이템 소비 장부 기록은 원래 설계대로 NetworkPlayer의 RPC 유지
                 netPlayer.ReportConsumedItemServerRpc(
                     new FixedString64Bytes(_sceneName),
                     new FixedString64Bytes(_itemId));

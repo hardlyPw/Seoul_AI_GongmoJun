@@ -449,7 +449,9 @@ public class PlayerController : MonoBehaviour
 
     private void HandleItemAndInteract()
     {
-        if (_input.GetItemUse()) OnItemUse?.Invoke();
+
+        if (_input.GetDashDown())     TryTriggerDash();
+        if (_input.GetItemUse())      OnItemUse?.Invoke();
         if (_input.GetInteractDown()) OnInteract?.Invoke();
     }
 
