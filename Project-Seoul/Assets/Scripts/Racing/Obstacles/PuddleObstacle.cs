@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using Unity.Netcode;
 
 public class PuddleObstacle : ObstacleBase
 {
@@ -6,10 +7,25 @@ public class PuddleObstacle : ObstacleBase
     [SerializeField] private float slowRatio = 0.5f;
     [SerializeField] private float slowDuration = 0.5f;
 
-    // base의 knockDown은 무시 — puddle은 감속만.
-    // owner/server 가드는 PlayerController.OnTriggerEnter가 이미 보장.
-    public override void HandlePlayerEnter(PlayerController player)
+    protected override void Awake()
     {
-        player.ApplySlow(slowRatio, slowDuration);
+        base.Awake();
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            // 멀티플레이어 둔화
+            var netObj = other.GetComponent<NetworkObject>();
+            if (netObj != null && netObj.IsOwner)
+            {
+                var player = other.GetComponent<PlayerController>();
+                if (player != null)
+                {
+                    player.ApplySlow(slowRatio, slowDuration);
+                }
+            }
+        }
     }
 }
