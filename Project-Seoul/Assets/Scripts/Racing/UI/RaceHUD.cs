@@ -1,4 +1,3 @@
-using Seoul.Network.Game;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -14,7 +13,6 @@ public class RaceHUD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI scoreText;
     [SerializeField] private TextMeshProUGUI itemText;
     [SerializeField] private TextMeshProUGUI stateText;
-    [SerializeField] private TextMeshProUGUI weatherText;
 
     private void Start()
     {
@@ -70,19 +68,6 @@ public class RaceHUD : MonoBehaviour
             stateText.fontSize  = 24f;
             stateText.alignment = TextAlignmentOptions.Center;
         }
-
-        // 날씨 - 좌측 상단
-        if (weatherText != null)
-        {
-            var rt = weatherText.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0f, 1f);
-            rt.anchorMax = new Vector2(0f, 1f);
-            rt.pivot     = new Vector2(0f, 1f);
-            rt.anchoredPosition = new Vector2(20f, -20f);
-            rt.sizeDelta        = new Vector2(200f, 50f);
-            weatherText.fontSize  = 22f;
-            weatherText.alignment = TextAlignmentOptions.Left;
-        }
     }
 
     private void Update()
@@ -105,14 +90,6 @@ public class RaceHUD : MonoBehaviour
             if (player.IsFallen)         stateText.text = "넘어짐!";
             else if (player.IsSprinting) stateText.text = "SPRINT";
             else                          stateText.text = "";
-        }
-
-        if (weatherText != null)
-        {
-            var w = WeatherGimmick.Instance != null
-                ? WeatherGimmick.Instance.Current.Value
-                : WeatherModifiers.Current;
-            weatherText.text = $"날씨: {WeatherModifiers.KoreanName(w)}";
         }
     }
 }
