@@ -1,0 +1,63 @@
+[33mb5c1e7e[m[33m ([m[1;31morigin/subwayMap[m[33m, [m[1;31morigin/multi-base[m[33m, [m[1;32msubwayMap[m[33m, [m[1;32mmulti-base[m[33m)[m Merge pull request #13 from hardlyPw/multy-bgwan
+[33mcef291b[m[33m ([m[1;31morigin/multy-bgwan[m[33m)[m chore: 테스트용 자전거 스테이지 제작
+[33m6362e17[m Merge pull request #12 from hardlyPw/multy-bgwan
+[33m62710f4[m fix: 2,3스테이지 아이템 로직 수정
+[33m02bf927[m Merge pull request #10 from hardlyPw/multy-bgwan
+[33mb3296ea[m Merge branch 'multi-base' into multy-bgwan
+[33m675876f[m Merge branch 'multi-base' of https://github.com/hardlyPw/Seoul_AI_GongmoJun into multi-base
+[33m98fc45b[m Merge pull request #11 from hardlyPw/feature/QTEevent
+[33m9475b79[m[33m ([m[1;31morigin/feature/QTEevent[m[33m, [m[1;32mfeature/QTEevent[m[33m)[m 충돌 오류 수정
+[33m1981071[m Merge pull request #9 from hardlyPw/feature/QTEevent
+[33m923d313[m 아이템 체계 통일
+[33m360c0a5[m 점수 부분 통합
+[33m5375baa[m feat: 자전거 스테이지 시스템 구현
+[33m2975305[m feat: 멀티플레이어 QTE 베이스 시스템 및 연타(Mash) 기믹 구현
+[33mef47d4b[m feat: 아이템 5종 추가
+[33m97ff633[m[33m ([m[1;31morigin/multi/weather-gimmick[m[33m)[m refactor: dash 입력을 GetDashDown(JJ 더블탭)으로 분리, item-use는 L 단독
+[33mca6ab7f[m chore: 사용처 0인 single-player 시절 스크립트 삭제 (AIInputProvider, TestStageStart)
+[33m151fa86[m Revert "Merge branch 'multi-base' of https://github.com/hardlyPw/Seoul_AI_GongmoJun into multi-base"
+[33m0454e3f[m Revert "Merge branch 'multi-base' of https://github.com/hardlyPw/Seoul_AI_GongmoJun into multi-base"
+[33me6f53b9[m Merge branch 'multi-base' of https://github.com/hardlyPw/Seoul_AI_GongmoJun into multi-base
+[33m82314d1[m refactor: 장애물 충돌 효과 소유권을 ObstacleBase로 이동
+[33m814b81e[m fix: 같은 lane에서만 플레이어 간 충돌 처리
+[33ma30e7dd[m refactor: 속도 modifier 다중 source 지원 + lane fit 보일러플레이트 추출
+[33m56955a3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfix-player-fsm[m[33m)[m refactor: PlayerController FSM 분리 + L키 dash + 점프 추락 fix
+[33mfbc2882[m fix: reduce remote-player jitter via tick alignment and ownership guards
+[33m5c19130[m feat: add stage 1 weather gimmick with networked sync
+[33mf42b941[m chore: ignore personal work files and sandbox test scenes
+[33m677df9c[m Merge pull request #7 from hardlyPw/feature/new-movement-system
+[33m2f190b9[m[33m ([m[1;31morigin/feature/new-movement-system[m[33m, [m[1;32mfeature/new-movement-system[m[33m)[m refactor: playercontoller refactor
+[33mab27135[m Merge pull request #6 from hardlyPw/multi/auto-forward
+[33mea85b15[m feat: 자동 전진 + A/D 입력 제거, W/S 노선 변경 유지
+[33ma988568[m Merge pull request #5 from hardlyPw/multi/race-run
+[33mc1fb55c[m[33m ([m[1;31morigin/multi/race-run[m[33m)[m feat: subway 기믹 로컬 모드 + Stage 2 전용 runner
+[33m24052df[m Merge remote-tracking branch 'origin/multi-base' into multi/race-run
+[33m05ba3d1[m feat: add result screen with score broadcast and back-to-title flow
+[33m820ee9e[m feat: add right-to-left wipe transition between scene loads
+[33m99012eb[m feat: multi-stage networking with persistent player and item sync
+[33m7455ff9[m scene: replace single race scene with multi-stage scene structure
+[33m089513f[m Merge pull request #4 from hardlyPw/multi/subway-run
+[33m2527866[m Merge branch 'multi-base' into multi/subway-run
+[33m3e51e76[m Merge pull request #2 from hardlyPw/bike-run
+[33m4fa1987[m[33m ([m[1;31morigin/bike-run[m[33m)[m feat: 감속 장애물, 배회형 장애물 추가
+[33m1fee316[m[33m ([m[1;31morigin/multi/subway-run[m[33m, [m[1;32mmulti/subway-run[m[33m)[m feat: 스테이지 기믹 관련 설계 및 지하철 흔들림 효과 ver 1.0
+[33md736ea5[m Jump buffer 구현
+[33m99c6dd3[m Merge branch 'multi-base' into multi/bike-run
+[33m8f46d35[m feat: 정적 장애물, 동적 장애물 추가
+[33m1a8a9ee[m merge: bring _Project/ flattening from multi-base into race-run
+[33me8b1440[m[33m ([m[1;32mfeature/minigame-proto[m[33m)[m chore: flatten _Project/ into Assets/ root
+[33maf542cb[m merge: bring MPPM from multi-base into race-run
+[33m3a78ea2[m chore: add Multiplayer Play Mode for in-editor 4-player testing
+[33mc859a2c[m docs: soften §16 intro line
+[33m1a3d3e8[m docs: rewrite §15-16 in direct second-person tone for teammates
+[33m6d5ac97[m docs: clarify automatic Unity package installation
+[33md9ef4e1[m feat: add race state machine, countdown, and score system
+[33md6f1ed8[m docs: add team collaboration guide for new minigames
+[33mb88ecb6[m feat: add multiplayer foundation with NGO + Lobby/Relay
+[33md646e0d[m Revert "Feat: 자전거 스테이지 프로토타입 구현"
+[33mee35afa[m Feat: 자전거 스테이지 프로토타입 구현
+[33m6dc27d7[m[33m ([m[1;31morigin/feature/racerun-proto[m[33m, [m[1;32mmain[m[33m)[m Initialize Unity project with Seoul-themed structure
+[33m662421b[m docs: update .gitignore
+[33m7c96531[m Project Project setup
+[33me9cb2bf[m Configure LFS for various file types
+[33mee75c8e[m Initial commit

@@ -16,8 +16,21 @@ public class CrosswalkGimmick : MonoBehaviour
 
     private void Start()
     {
+        var lm = LaneManager.Instance;
+
         if (blockingWall != null)
-            LaneManager.Instance.FitToLaneRange(blockingWall.transform, minLane, maxLane);
+        {
+            var wallPos = blockingWall.transform.position;
+            wallPos.z                          = lm.GetLaneCenterZ(minLane, maxLane);
+            blockingWall.transform.position    = wallPos;
+
+            if (blockingWall is BoxCollider box)
+            {
+                var size = box.size;
+                size.z   = lm.GetLaneSpanZ(minLane, maxLane);
+                box.size = size;
+            }
+        }
 
         StartCoroutine(TrafficCycle());
     }
