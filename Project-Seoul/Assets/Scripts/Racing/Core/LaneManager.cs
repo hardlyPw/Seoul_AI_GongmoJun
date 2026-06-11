@@ -28,24 +28,6 @@ public class LaneManager : MonoBehaviour
     public float GetLaneSpanZ(int minLane, int maxLane) =>
         Mathf.Abs(GetLaneZ(minLane) - GetLaneZ(maxLane)) + LaneSpacing;
 
-    // 주어진 Transform을 minLane~maxLane 범위에 맞춰 Z 좌표 정렬하고,
-    // BoxCollider가 있으면 그 Z 크기도 범위 폭에 맞춤. 기믹 4종이 동일하게 쓰던 보일러플레이트.
-    public void FitToLaneRange(Transform target, int minLane, int maxLane)
-    {
-        if (target == null) return;
-
-        var pos = target.position;
-        pos.z = GetLaneCenterZ(minLane, maxLane);
-        target.position = pos;
-
-        if (target.TryGetComponent<BoxCollider>(out var col))
-        {
-            var size = col.size;
-            size.z = GetLaneSpanZ(minLane, maxLane);
-            col.size = size;
-        }
-    }
-
     public bool IsOverpassLane(int index)  => index <= 1;
     public bool IsCafeLane(int index)      => index >= 2 && index <= 3;
     public bool IsCrosswalkLane(int index) => index >= 2;
