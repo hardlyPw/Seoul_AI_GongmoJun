@@ -135,15 +135,15 @@ public class NetworkItemInventory : NetworkBehaviour
 
     private IEnumerator AlarmClockRoutine(float duration)
     {
-        _player.SetSpeedMultiplier(1.5f);
+        //_player.SetSpeedMultiplier(1.5f);
         yield return new WaitForSeconds(duration);
-        _player.SetSpeedMultiplier(1.0f);
+        //_player.SetSpeedMultiplier(1.0f);
     }
 
     private IEnumerator DashItemRoutine(float duration, bool isTaxi)
     {
         IsItemDashing = true;
-        _player.SetSpeedMultiplier(2.0f);
+        //_player.SetSpeedMultiplier(2.0f);
 
         if (isTaxi)
         {
@@ -171,7 +171,7 @@ public class NetworkItemInventory : NetworkBehaviour
 
         IsItemDashing = false;
         IsLaneLocked = false;
-        _player.SetSpeedMultiplier(1.0f);
+        //_player.SetSpeedMultiplier(1.0f);
     }
 
     private void CheckDashCollision()

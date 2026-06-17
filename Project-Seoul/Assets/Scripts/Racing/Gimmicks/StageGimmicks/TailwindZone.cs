@@ -17,7 +17,7 @@ public class TailwindZone : MonoBehaviour
                 var player = other.GetComponent<PlayerController>();
                 if (player != null)
                 {
-                    player.SetSpeedMultiplier(speedMultiplier);
+                    //player.SetSpeedMultiplier(speedMultiplier);
                     Debug.Log($"[{other.name}] 로컬 순풍 가속 배율 {speedMultiplier}배 적용 완료");
                 }
             }
@@ -31,7 +31,7 @@ public class TailwindZone : MonoBehaviour
             var player = other.GetComponent<PlayerController>();
             if (player != null)
             {
-                player.SetSpeedMultiplier(1.0f); // 일반 기본 배율로 정상 원복
+                //player.SetSpeedMultiplier(1.0f); // 일반 기본 배율로 정상 원복
                 Debug.Log($"[{other.name}] 순풍 구역 이탈: 가속 버프 해제");
             }
         }

@@ -54,6 +54,7 @@ public class PlayerController : MonoBehaviour
     public readonly PlayerRunState RunState = new PlayerRunState();
     public readonly PlayerDashState DashState = new PlayerDashState();
     public readonly PlayerStunState StunState = new PlayerStunState();
+       public readonly PlayerAirborneState AirborneState = new PlayerAirborneState();
     private IPlayerState _currentState;
 
     private Rigidbody _rb;
@@ -164,9 +165,13 @@ public class PlayerController : MonoBehaviour
         if (_input == null) return;
         if (!IsLocallySimulated()) return;
 
+        CheckGrounded();
+
         HandleNaturalStaminaRegen();
         HandleLaneChange();
         HandleJumpInput();
+        HandleItemAndInteract();
+        HandleSlipstreamCheck();
         HandleItemAndInteract();
         UpdateRecoveryMultiplier();
 
@@ -183,6 +188,7 @@ public class PlayerController : MonoBehaviour
         _currentState.FixedUpdateState(this);
         HandleLaneSnap();
         ApplyVelocity();
+        ApplyVelocityInternal();
         CheckPlayerCollision();
     }
 
@@ -251,6 +257,14 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+
+    private void ApplyKnockback(Vector3 dir)
+    {
+        dir.y = 0.4f;
+        dir.z = 0f;
+        _velocity += dir.normalized * knockbackForce;
+    }
+
     // ── 중력 ──────────────────────────────────────────────
 
     private void ApplyGravity()
@@ -280,6 +294,61 @@ public class PlayerController : MonoBehaviour
         _velocity.z = dir * laneSnapSpeed;
     }
 
+    private void HandleLaneChange()
+    {
+        //if (_isFallen) return;
+        if (_currentState == AirborneState) return;
+        // 아이템 관련 수정
+        // [추가] 택시 아이템 작동 중일 때 플레이어의 좌우 레인 변경 입력을 강제로 차단
+        if (TryGetComponent<NetworkItemInventory>(out var inv) && inv.IsLaneLocked) return;
+
+        _laneChangeCooldownTimer -= Time.deltaTime;
+        if (_laneChangeCooldownTimer > 0f) return;
+
+        int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
+
+        float v = _input.GetLaneChange();
+        // 자전거 도로 보행자 도로 분할
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "05_Stage_Bicycle" && transform.position.x > 125f)
+        {
+            // 조건 A: 자전거 도로(0~2)에서 보행자 도로(3~5)로 넘어가려는 변경 시도 원천 차단
+            if (_currentLane == 2 && v < -0.5f) return;
+
+            // 조건 B: 보행자 도로(3~5)에서 자전거 도로(0~2)로 가로지르려는 변경 시도 원천 차단
+            if (_currentLane == 3 && v > 0.5f) return;
+        }
+
+        if (v > 0.5f && _currentLane > 0)
+        {
+            _currentLane--;
+            _laneChangeCooldownTimer = laneChangeCooldown;
+        }
+        else if (v < -0.5f && _currentLane < laneCount - 1)
+        {
+            _currentLane++;
+            _laneChangeCooldownTimer = laneChangeCooldown;
+        }
+    }
+
+
+    private void ApplyVelocityInternal()
+    {
+        Vector3 newPos = _rb.position + _velocity * Time.fixedDeltaTime;
+
+        if (LaneManager.Instance != null)
+        {
+            float targetZ = LaneManager.Instance.GetLaneZ(_currentLane);
+            // 목표 라인 정렬 보정 로직
+            if (Mathf.Sign(targetZ - _rb.position.z) != Mathf.Sign(targetZ - newPos.z)
+                && Mathf.Abs(targetZ - newPos.z) < laneSnapSpeed * Time.fixedDeltaTime * 1.5f)
+            {
+                newPos.z = targetZ;
+            }
+        }
+
+        // Kinematic 바디의 정석 이동 방식
+        _rb.MovePosition(newPos);
+    }
     // ── 적용 ──────────────────────────────────────────────
 
     private void ApplyVelocity()
@@ -322,28 +391,6 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // ── 라인 변경 ─────────────────────────────────────────
-
-    private void HandleLaneChange()
-    {
-        if (IsFallen) return;
-        _laneChangeCooldownTimer -= Time.deltaTime;
-        if (_laneChangeCooldownTimer > 0f) return;
-
-        int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
-
-        float v = _input.GetLaneChange();
-        if (v > 0.5f && _currentLane > 0)
-        {
-            _currentLane--;
-            _laneChangeCooldownTimer = laneChangeCooldown;
-        }
-        else if (v < -0.5f && _currentLane < laneCount - 1)
-        {
-            _currentLane++;
-            _laneChangeCooldownTimer = laneChangeCooldown;
-        }
-    }
 
     // ── 지면 체크 ─────────────────────────────────────────
 
@@ -389,11 +436,17 @@ public class PlayerController : MonoBehaviour
 
     private void OnTriggerEnter(Collider col)
     {
-        if (!IsLocallySimulated()) return;
-        if (IsFallen) return;
+        if (_currentState == StunState) return; // 스턴 상태 면역(무적) 유지
 
-        if (col.TryGetComponent<ObstacleBase>(out var obstacle))
-            obstacle.HandlePlayerEnter(this);
+        // 아이템 관련 수정
+        // [추가] 킥보드 및 택시 돌진(IsItemDashing) 중에는 일반 장애물 충돌 판정을 무시
+        if (TryGetComponent<NetworkItemInventory>(out var inv) && inv.IsItemDashing) return;
+
+        if (col.TryGetComponent<ObstacleBase>(out var obstacle) && obstacle.KnockDownOnCollision)
+        {
+            TriggerFall();
+            ApplyKnockback(transform.position - col.transform.position);
+        }
     }
 
     // ObstacleBase에서 호출. 충돌 지점을 받아 knockback 방향 계산.
@@ -403,12 +456,6 @@ public class PlayerController : MonoBehaviour
         ApplyKnockback(transform.position - obstaclePos);
     }
 
-    private void ApplyKnockback(Vector3 dir)
-    {
-        dir.y = 0.4f;
-        dir.z = 0f;
-        _velocity += dir.normalized * knockbackForce;
-    }
 
     // ── 공개 메서드 ───────────────────────────────────────
 
@@ -458,4 +505,52 @@ public class PlayerController : MonoBehaviour
             Debug.Log($"[{gameObject.name}] 글로벌 기믹 신호로 레인 강제 보정: {targetLane}");
         }
     }
+    
+    // 아이템 관련 수정
+    // 택시 아이템 사용 시 중앙 레인으로 강제 이동
+    public void ForceSetLane(int laneIndex)
+    {
+        int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
+        _currentLane = Mathf.Clamp(laneIndex, 0, laneCount - 1);
+    }
+
+    private void HandleSlipstreamCheck()
+    {
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "05_Stage_Bicycle") return;
+        if (TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj) && !netObj.IsOwner) return;
+        if (_currentState != RunState) return; // 오직 달리기를 사용하는 상태에서만 소모 감면 유효
+
+        bool isInSlipstreamZone = false;
+        float maxTrackDistance = 8f; // 동등 차선 내 허용 최대 임계 거리 8m
+
+        // 현재 씬에 생성된 모든 플레이어 컨트롤러 객체를 탐색하여 전방 추종 대상 비교
+        PlayerController[] allPlayers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        foreach (var other in allPlayers)
+        {
+            if (other == this) continue;
+            if (other.IsFallen) continue;
+
+            // 동일한 라인에 정렬되어 있는지 검증
+            if (other.CurrentLane == this._currentLane)
+            {
+                float distanceX = other.transform.position.x - this.transform.position.x;
+
+                // 상대방이 내 앞에 있고(distanceX > 0) 허용 기준 내에 들어온 경우 슬립 스트림 적용
+                if (distanceX > 0f && distanceX <= maxTrackDistance)
+                {
+                    isInSlipstreamZone = true;
+                    break;
+                }
+            }
+        }
+
+        if (isInSlipstreamZone)
+        {
+            // 슬립 스트림 영역 안에서는 달리기를 유지해도 스태미나가 소모되지 않도록 
+            _stamina = Mathf.Min(maxStamina, _stamina + sprintDrainRate * Time.deltaTime);
+        }
+    }
+
+    public void SetVelocityY(float newY) => _velocity.y = newY;
+
 }

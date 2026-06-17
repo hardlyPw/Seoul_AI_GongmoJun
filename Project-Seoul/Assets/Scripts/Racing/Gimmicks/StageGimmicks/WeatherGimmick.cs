@@ -86,8 +86,8 @@ namespace Seoul.Network.Game
 
             var boxes = GetOrderedBoxes();
             int n = Mathf.Min(boxes.Length, _itemBoxLanes.Count);
-            for (int i = 0; i < n; i++)
-                boxes[i].SetLaneIndex(_itemBoxLanes[i]);
+            /*for (int i = 0; i < n; i++)
+                boxes[i].SetLaneIndex(_itemBoxLanes[i]);*/
         }
 
         // 서버/클라가 동일한 순서로 ItemBox를 매칭하기 위한 결정적 정렬 (x, z 좌표 기준).

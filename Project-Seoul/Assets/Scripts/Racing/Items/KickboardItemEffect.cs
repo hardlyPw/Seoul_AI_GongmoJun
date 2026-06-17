@@ -16,8 +16,8 @@ public class KickboardItemEffect : ItemEffectBase
 
     private IEnumerator SpeedBoostRoutine(PlayerController player)
     {
-        player.SetSpeedMultiplier(_speedBoost);
+        //player.SetSpeedMultiplier(_speedBoost);
         yield return new WaitForSeconds(_duration);
-        player.SetSpeedMultiplier(1f);
+        //player.SetSpeedMultiplier(1f);
     }
 }
