@@ -3,6 +3,7 @@ using UnityEngine;
 
 public class KickboardItemEffect : ItemEffectBase
 {
+    private const string Source = "kickboard";
     private readonly float _speedBoost = 1.5f;
     private readonly float _duration   = 5f;
 
@@ -16,8 +17,8 @@ public class KickboardItemEffect : ItemEffectBase
 
     private IEnumerator SpeedBoostRoutine(PlayerController player)
     {
-        //player.SetSpeedMultiplier(_speedBoost);
+        player.SetSpeedMultiplier(Source, _speedBoost);
         yield return new WaitForSeconds(_duration);
-        //player.SetSpeedMultiplier(1f);
+        player.ClearSpeedMultiplier(Source);
     }
 }

@@ -8,6 +8,18 @@ public class ItemBox : MonoBehaviour
 
     private void Start()
     {
+        ApplyLanePosition();
+    }
+
+    // WeatherGimmick 등 런타임에서 레인을 재지정할 때 사용
+    public void SetLaneIndex(int index)
+    {
+        laneIndex = index;
+        ApplyLanePosition();
+    }
+
+    private void ApplyLanePosition()
+    {
         var pos = transform.position;
         pos.z              = LaneManager.Instance.GetLaneZ(laneIndex);
         transform.position = pos;

@@ -12,6 +12,10 @@ public class NetworkItemInventory : NetworkBehaviour
     private PlayerController _player;
     private Coroutine _itemBuffCoroutine;
 
+    private const string AlarmClockSource = "alarm_clock";
+    private const string KickboardSource  = "kickboard";
+    private const string TaxiSource       = "taxi";
+
     public bool IsItemDashing { get; private set; }
     public bool IsLaneLocked { get; private set; }
 
@@ -135,15 +139,16 @@ public class NetworkItemInventory : NetworkBehaviour
 
     private IEnumerator AlarmClockRoutine(float duration)
     {
-        //_player.SetSpeedMultiplier(1.5f);
+        _player.SetSpeedMultiplier(AlarmClockSource, 1.5f);
         yield return new WaitForSeconds(duration);
-        //_player.SetSpeedMultiplier(1.0f);
+        _player.ClearSpeedMultiplier(AlarmClockSource);
     }
 
     private IEnumerator DashItemRoutine(float duration, bool isTaxi)
     {
         IsItemDashing = true;
-        //_player.SetSpeedMultiplier(2.0f);
+        string dashSource = isTaxi ? TaxiSource : KickboardSource;
+        _player.SetSpeedMultiplier(dashSource, 2.0f);
 
         if (isTaxi)
         {
@@ -171,7 +176,7 @@ public class NetworkItemInventory : NetworkBehaviour
 
         IsItemDashing = false;
         IsLaneLocked = false;
-        //_player.SetSpeedMultiplier(1.0f);
+        _player.ClearSpeedMultiplier(dashSource);
     }
 
     private void CheckDashCollision()
