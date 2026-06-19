@@ -4,15 +4,25 @@ using UnityEngine;
 
 namespace Seoul.Network.Game
 {
-    // 달리기 스테이지(Stage 1) 씬 루트에 NetworkObject + 이 컴포넌트를 가진 GameObject로 배치.
-    // 서버가 스테이지 진입 시 랜덤 날씨를 결정하고 NetworkVariable로 동기화.
+    // 씬 루트에 NetworkObject + 이 컴포넌트를 가진 GameObject로 배치하면 동작.
+    // 서버가 OnNetworkSpawn 시점에 랜덤 날씨를 결정하고 NetworkVariable로 클라에 전파.
     // - Clear:   무효과
-    // - Rain:    WeatherModifiers (넘어짐/회복) — PlayerController 적용은 후속 PR
+    // - Rain:    넘어짐 지속/회복 시간 2배 (PlayerStunState, PlayerController)
     // - Typhoon: 씬의 ItemBox lane을 서버에서 셔플 → NetworkList로 전파
-    // - Dust:    WeatherModifiers (스태미너 2배) — 후속 PR
+    // - Dust:    스프린트 스태미너 소모 2배 (PlayerRunState)
+    //
+    // 스테이지 비종속: 씬에 컴포넌트만 배치하면 동작.
+    // allowedWeathers로 스테이지별 후보 풀 조정 가능. useForcedWeather는 테스트용.
     public class WeatherGimmick : NetworkBehaviour
     {
         public static WeatherGimmick Instance { get; private set; }
+
+        [Tooltip("후보 날씨 목록. 비어있으면 전체(Clear/Rain/Typhoon/Dust) 중 랜덤.")]
+        [SerializeField] private WeatherType[] allowedWeathers;
+
+        [Tooltip("디버그/테스트용. 켜면 forcedWeather로 고정.")]
+        [SerializeField] private bool useForcedWeather = false;
+        [SerializeField] private WeatherType forcedWeather = WeatherType.Clear;
 
         public NetworkVariable<WeatherType> Current = new(
             WeatherType.Clear,
@@ -45,7 +55,7 @@ namespace Seoul.Network.Game
 
             if (!IsServer) return;
 
-            var picked = (WeatherType)Random.Range(0, 4);
+            var picked = PickWeather();
             Debug.Log($"[WeatherGimmick] Server picked weather: {picked}");
             Current.Value = picked;
         }
@@ -56,13 +66,39 @@ namespace Seoul.Network.Game
             if (_itemBoxLanes != null) _itemBoxLanes.OnListChanged -= OnItemBoxLanesChanged;
         }
 
+        private WeatherType PickWeather()
+        {
+            if (useForcedWeather) return forcedWeather;
+
+            if (allowedWeathers != null && allowedWeathers.Length > 0)
+                return allowedWeathers[Random.Range(0, allowedWeathers.Length)];
+
+            return (WeatherType)Random.Range(0, 4);
+        }
+
         private void OnWeatherChanged(WeatherType prev, WeatherType next)
         {
             WeatherModifiers.Apply(next);
-            Debug.Log($"[WeatherGimmick] Weather: {prev} -> {next} ({WeatherModifiers.KoreanName(next)})");
+            Debug.Log($"[WeatherGimmick] Weather: {prev} -> {next} ({WeatherModifiers.KoreanName(next)}) | {DescribeEffects(next)}");
 
             if (IsServer && next == WeatherType.Typhoon)
                 ShuffleItemBoxesServer();
+        }
+
+        private static string DescribeEffects(WeatherType w)
+        {
+            switch (w)
+            {
+                case WeatherType.Rain:
+                    return $"넘어짐 지속 x{WeatherModifiers.FallDurationMult}, 회복 시간 x{WeatherModifiers.RecoveryTimeMult}";
+                case WeatherType.Dust:
+                    return $"스프린트 스태미너 소모 x{WeatherModifiers.SprintDrainMult}";
+                case WeatherType.Typhoon:
+                    return "아이템 박스 lane 셔플";
+                case WeatherType.Clear:
+                default:
+                    return "효과 없음";
+            }
         }
 
         private void ShuffleItemBoxesServer()

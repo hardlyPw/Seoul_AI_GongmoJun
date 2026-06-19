@@ -88,6 +88,7 @@ public class PlayerController : MonoBehaviour
     public float FallenDuration => fallenDuration;
     public bool IsSprinting => _currentState == RunState;
     public bool IsFallen => _currentState == StunState;
+    public bool IsDashing => _currentState == DashState;
     public int CurrentLane => _currentLane;
 
     public void Initialize(IInputProvider inputProvider) => _input = inputProvider;

@@ -2,7 +2,7 @@ namespace Seoul.Network.Game
 {
     // 현재 활성 날씨가 PlayerController/스태미너 등에 적용할 모디파이어.
     // WeatherGimmick이 날씨 결정 시 Apply()로 갱신.
-    // PlayerController는 ehsui의 new-movement-system 머지 후 이 값을 곱하도록 후속 PR에서 연결.
+    // 소비처: PlayerStunState(FallDuration), PlayerController.StartRecoveryWindow(Recovery), PlayerRunState(SprintDrain).
     public static class WeatherModifiers
     {
         public static WeatherType Current { get; private set; } = WeatherType.Clear;
