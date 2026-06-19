@@ -12,6 +12,9 @@ namespace Seoul.Network.Game
         [Header("Scoreboard (size 4)")]
         [SerializeField] private TMP_Text[] scoreboardEntries = new TMP_Text[4];
 
+        [Header("Weather")]
+        [SerializeField] private TMP_Text weatherText;
+
         [Header("Settings")]
         [SerializeField] private float refreshInterval = 0.2f;
 
@@ -26,6 +29,16 @@ namespace Seoul.Network.Game
 
             UpdateMyScore();
             UpdateScoreboard();
+            UpdateWeather();
+        }
+
+        private void UpdateWeather()
+        {
+            if (weatherText == null) return;
+
+            weatherText.text = WeatherGimmick.Instance != null
+                ? $"Weather: {WeatherGimmick.Instance.Current.Value}"
+                : "";
         }
 
         private void UpdateMyScore()
@@ -39,7 +52,7 @@ namespace Seoul.Network.Game
                 if (p.IsOwner) { me = p; break; }
             }
 
-            // [¼öÁ¤ ¿Ï·á] ³» NetworkPlayer ¿ÀºêÁ§Æ®¿¡¼­ PlayerScore ÄÄÆ÷³ÍÆ®¸¦ Ã£¾Æ Á¡¼ö Ãâ·Â
+            // [ï¿½ï¿½ï¿½ï¿½ ï¿½Ï·ï¿½] ï¿½ï¿½ NetworkPlayer ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ï¿½ï¿½ PlayerScore ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ®ï¿½ï¿½ Ã£ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½
             if (me != null && me.TryGetComponent<PlayerScore>(out var playerScore))
             {
                 myScoreText.text = $"Score: {playerScore.Score.Value}";
@@ -58,12 +71,12 @@ namespace Seoul.Network.Game
                 if (p != null) _sorted.Add(p);
             }
 
-            // [¼öÁ¤ ¿Ï·á] °¢ ÇÃ·¹ÀÌ¾î°¡ °¡Áø PlayerScoreÀÇ Score.Value °ªÀ» ºñ±³ÇÏ¿© Á¤·Ä
+            // [ï¿½ï¿½ï¿½ï¿½ ï¿½Ï·ï¿½] ï¿½ï¿½ ï¿½Ã·ï¿½ï¿½Ì¾î°¡ ï¿½ï¿½ï¿½ï¿½ PlayerScoreï¿½ï¿½ Score.Value ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ï¿ï¿½ ï¿½ï¿½ï¿½ï¿½
             _sorted.Sort((a, b) =>
             {
                 int scoreA = a.TryGetComponent<PlayerScore>(out var sA) ? sA.Score.Value : 0;
                 int scoreB = b.TryGetComponent<PlayerScore>(out var sB) ? sB.Score.Value : 0;
-                return scoreB.CompareTo(scoreA); // ³»¸²Â÷¼ø Á¤·Ä
+                return scoreB.CompareTo(scoreA); // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
             });
 
             for (int i = 0; i < scoreboardEntries.Length; i++)
@@ -75,7 +88,7 @@ namespace Seoul.Network.Game
                 {
                     var p = _sorted[i];
                     
-                    // [¼öÁ¤ ¿Ï·á] È­¸é¿¡ Ç¥½ÃÇÒ °³º° ÇÃ·¹ÀÌ¾îÀÇ ÃÖÁ¾ Á¡¼ö ÆÄ½Ì
+                    // [ï¿½ï¿½ï¿½ï¿½ ï¿½Ï·ï¿½] È­ï¿½é¿¡ Ç¥ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ã·ï¿½ï¿½Ì¾ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ä½ï¿½
                     int finalScore = p.TryGetComponent<PlayerScore>(out var s) ? s.Score.Value : 0;
                     
                     string label = p.IsOwner ? $"P{p.OwnerClientId} (You)" : $"P{p.OwnerClientId}";
