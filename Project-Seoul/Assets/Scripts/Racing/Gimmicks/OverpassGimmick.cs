@@ -26,6 +26,10 @@ namespace Seoul.Network.Game
         [Tooltip("Rebuild 시 transform.position.z를 LaneManager의 lane 중심으로 자동 정렬할지. 기존 좌표 유지하고 폭만 lane 기반으로 받고 싶으면 끄세요.")]
         [SerializeField] private bool snapTransformToLaneCenter = true;
 
+        [Header("Lane Zone Behavior")]
+        [Tooltip("HardBlock = 범위 밖 lane change 차단. Penalty = lane change는 허용, 닿으면 감속+무적+깜빡임.")]
+        [SerializeField] private LaneRangeZone.BlockMode laneZoneMode = LaneRangeZone.BlockMode.HardBlock;
+
         [Header("Stairs (입구 + 출구 계단)")]
         [Tooltip("각 계단의 x 길이.")]
         [SerializeField] private float stairLength = 4f;
@@ -177,6 +181,7 @@ namespace Seoul.Network.Game
                 var zone = zoneGO.AddComponent<LaneRangeZone>();
                 zone.MinLane = Mathf.Clamp(Mathf.Min(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
                 zone.MaxLane = Mathf.Clamp(Mathf.Max(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
+                zone.Mode = laneZoneMode;
             }
 
             // 6) 입구 ramp snap trigger (UndergroundExitRamp 재사용, start=낮 end=높)
@@ -251,10 +256,9 @@ namespace Seoul.Network.Game
             }
             else if (go.TryGetComponent<Collider>(out var c))
             {
-                // 시각 only — Destroy()는 다음 프레임 효력이라 그 사이 충돌 발생 → 캐릭터 막힘.
-                // 즉시 enabled=false로 충돌 무효화 후 destroy.
-                c.enabled = false;
-                DestroySafe(c);
+                // 시각 only geometry도 카메라 occlusion raycast에는 잡혀야 한다.
+                // trigger collider로 남겨 물리 이동은 막지 않되 투명화 대상 검출에만 사용한다.
+                c.isTrigger = true;
             }
             if (mat != null && go.TryGetComponent<MeshRenderer>(out var mr)) mr.sharedMaterial = mat;
             go.hideFlags = HideFlags.DontSave;
