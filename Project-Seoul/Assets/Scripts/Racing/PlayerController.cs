@@ -64,6 +64,14 @@ public class PlayerController : MonoBehaviour
 
     private float _stamina;
     private bool _isGrounded;
+    // 지하차도 입구(UndergroundHole) trigger 중첩 카운트.
+    // > 0 이면 CheckGrounded 결과를 무시하고 _isGrounded=false 강제 → 도로 collider가 있어도 추락.
+    private int _holeOverlapCount;
+    // 지하차도 옆 벽(UndergroundWall) trigger 중첩 카운트.
+    // > 0 인 상태에서 lane change가 실제로 발생하려는 순간 → fall + knockback.
+    private int _underWallOverlap;
+    // 현재 캐릭터가 위에 있는 출구 ramp (없으면 null). FixedUpdate에서 캐릭터 y를 ramp surface로 자동 보정.
+    private Seoul.Network.Game.UndergroundExitRamp _currentExitRamp;
     private int _currentLane;
     private float _laneChangeCooldownTimer;
     private float _jumpBufferTimer;
@@ -190,7 +198,27 @@ public class PlayerController : MonoBehaviour
         HandleLaneSnap();
         ApplyVelocity();
         ApplyVelocityInternal();
+        SnapToExitRamp();
         CheckPlayerCollision();
+    }
+
+    // Ramp 영역에 있는 동안 캐릭터 발을 ramp surface로 자동 보정 (올라가기/내려가기/추락 모두).
+    // - 위로 가는 중(점프, vy>0.1)에만 skip → 점프 곡선 자유.
+    // - 추락(vy<0)에도 snap 작동 → 입구 계단을 부드럽게 따라 내려옴.
+    // - surface와의 갭이 1m를 넘으면 skip (점프 정점 등 — 캐릭터 곡선이 다시 surface 가까이 오면 다시 snap).
+    private void SnapToExitRamp()
+    {
+        if (_currentExitRamp == null) return;
+        if (_velocity.y > 0.1f) return;
+
+        float surfaceY = _currentExitRamp.SurfaceYAt(transform.position.x);
+        float targetY  = surfaceY + _col.height * 0.5f; // capsule pivot center 가정
+        if (Mathf.Abs(targetY - transform.position.y) > 1f) return;
+
+        var pos = _rb.position;
+        pos.y = targetY;
+        _rb.MovePosition(pos);
+        _velocity.y = 0f;
     }
 
     // ── FSM 제어 ─────────────────────────────────────────
@@ -321,11 +349,14 @@ public class PlayerController : MonoBehaviour
 
         if (v > 0.5f && _currentLane > 0)
         {
+            // 지하차도 영역에서 lane change 시도 → fall (옆에서 hole로 진입 방지).
+            if (_underWallOverlap > 0) return; // 지하차도 옆 벽 — lane change 자체 차단 (페널티 없이 막힘)
             _currentLane--;
             _laneChangeCooldownTimer = laneChangeCooldown;
         }
         else if (v < -0.5f && _currentLane < laneCount - 1)
         {
+            if (_underWallOverlap > 0) return; // 지하차도 옆 벽 — lane change 자체 차단 (페널티 없이 막힘)
             _currentLane++;
             _laneChangeCooldownTimer = laneChangeCooldown;
         }
@@ -406,6 +437,9 @@ public class PlayerController : MonoBehaviour
             Vector3.down, out var hit,
             dist, groundLayer, QueryTriggerInteraction.Ignore);
 
+        // UndergroundHole 안에 있는 동안은 도로 SphereCast 결과 무시 (지하차도 입구 추락 처리).
+        if (_holeOverlapCount > 0) _isGrounded = false;
+
         if (debugGround)
             Debug.Log($"[Grounded] origin={origin} pos.y={transform.position.y:F2} grounded={_isGrounded} dist={dist:F2} hit={(hit.collider != null ? hit.collider.name : "none")}");
     }
@@ -437,6 +471,16 @@ public class PlayerController : MonoBehaviour
 
     private void OnTriggerEnter(Collider col)
     {
+        // 지하차도 입구 — 스턴 중에도 카운트해야 exit와 짝이 맞음.
+        if (col.GetComponentInParent<Seoul.Network.Game.UndergroundHole>() != null)
+            _holeOverlapCount++;
+
+        if (col.GetComponentInParent<Seoul.Network.Game.UndergroundWall>() != null)
+            _underWallOverlap++;
+
+        var ramp = col.GetComponentInParent<Seoul.Network.Game.UndergroundExitRamp>();
+        if (ramp != null) _currentExitRamp = ramp;
+
         if (_currentState == StunState) return; // 스턴 상태 면역(무적) 유지
 
         // 아이템 관련 수정
@@ -448,6 +492,18 @@ public class PlayerController : MonoBehaviour
             TriggerFall();
             ApplyKnockback(transform.position - col.transform.position);
         }
+    }
+
+    private void OnTriggerExit(Collider col)
+    {
+        if (col.GetComponentInParent<Seoul.Network.Game.UndergroundHole>() != null)
+            _holeOverlapCount = Mathf.Max(0, _holeOverlapCount - 1);
+
+        if (col.GetComponentInParent<Seoul.Network.Game.UndergroundWall>() != null)
+            _underWallOverlap = Mathf.Max(0, _underWallOverlap - 1);
+
+        var ramp = col.GetComponentInParent<Seoul.Network.Game.UndergroundExitRamp>();
+        if (ramp != null && _currentExitRamp == ramp) _currentExitRamp = null;
     }
 
     // ObstacleBase에서 호출. 충돌 지점을 받아 knockback 방향 계산.

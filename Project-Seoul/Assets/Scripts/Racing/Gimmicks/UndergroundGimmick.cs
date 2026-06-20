@@ -1,0 +1,368 @@
+using UnityEngine;
+
+namespace Seoul.Network.Game
+{
+    // 지하차도 기믹 (정적 배치, 멀티 동기화 없음).
+    // - 씬에 prefab을 끌어다 놓기만 하면 시각/충돌이 자동 생성된다.
+    // - 인스펙터에서 holeLength/holeWidth/undergroundDepth 등을 바꾸면 에디터에서 즉시 갱신.
+    // - 동작 원리:
+    //   * 도로 위에 검은 quad("구멍" 그림) + UndergroundHole trigger 얹음.
+    //   * 캐릭터가 trigger에 진입하면 PlayerController가 ground 판정을 무시 → 추락.
+    //   * 점프해서 trigger를 지나가면 _velocity.y가 살아있어 도로 반대편에 그대로 착지.
+    //   * 떨어진 캐릭터는 지하 floor(별도 Ground collider)에 착지 후 출구 ramp로 다시 지상.
+    // - 자동 생성된 자식들은 HideFlags.DontSave → prefab/scene에 저장되지 않고 OnEnable 때마다 재생성.
+    [ExecuteAlways]
+    public class UndergroundGimmick : MonoBehaviour
+    {
+        [Header("Hole (도로 위 구멍)")]
+        [Tooltip("구멍의 진행 방향 길이(x). 점프로 건너야 하는 거리.")]
+        [SerializeField] private float holeLength = 4f;
+        [Tooltip("구멍의 lane 방향 폭(z). lane 2~3 막을 거면 lane spacing × 2.")]
+        [SerializeField] private float holeWidth = 2f;
+        [Tooltip("ground 무시 trigger의 높이(y). 점프 정점보다 커야 통과 중 ground=false 유지.")]
+        [SerializeField] private float holeTriggerHeight = 3f;
+        [Tooltip("trigger의 z 폭을 holeWidth보다 양쪽에서 이만큼 줄여, 옆 lane 캐릭터 capsule이 trigger에 침범해 잘못 추락하는 걸 방지. 캐릭터 radius보다 약간 크게.")]
+        [SerializeField] private float holeTriggerZClearance = 0.4f;
+
+        [Header("Underground (지하 도로)")]
+        [Tooltip("지상 도로(y=0)에서 지하 floor까지의 깊이(양수).")]
+        [SerializeField] private float undergroundDepth = 3f;
+        [Tooltip("지하 도로 전체 길이(x). 구멍 + 앞쪽 leadIn + 뒤쪽 ramp 포함.")]
+        [SerializeField] private float undergroundLength = 24f;
+        [Tooltip("구멍 시작점보다 앞으로 지하가 더 이어지는 여유(분위기/계단 공간).")]
+        [SerializeField] private float undergroundLeadIn = 2f;
+
+        [Header("Exit Ramp (지하 → 지상 비탈)")]
+        [Tooltip("출구 비탈의 진행 방향 길이.")]
+        [SerializeField] private float exitRampLength = 6f;
+
+        [Header("Wall (지하 좌우 벽 — 지하 안쪽만)")]
+        [Tooltip("지하 벽 높이(y). 지하 floor 위부터 위로 세움. 보통 undergroundDepth와 같거나 살짝 작게.")]
+        [SerializeField] private float undergroundWallHeight = 3f;
+
+        [Header("Entrance Guard (입구 위쪽 가드 — hole 영역에만)")]
+        [Tooltip("hole 영역에만 지상 위로 세우는 가드 벽 높이(y). 옆에서 hole로 들어오려는 걸 시각적으로 막음. " +
+                 "0 이하로 두면 가드 생성 안 함.")]
+        [SerializeField] private float entranceGuardHeight = 1.5f;
+
+        [Header("Entrance Stairs (입구 계단 — 시각용)")]
+        [Tooltip("입구 계단 단 개수. 0 이면 계단 안 만듦. 시각용이라 collider 없음 — 캐릭터는 그대로 추락.")]
+        [SerializeField] private int entranceStairCount = 5;
+
+        [Header("Layers")]
+        [Tooltip("지하 floor/ramp가 사용할 layer 이름. PlayerController.groundLayer mask에 포함된 layer여야 착지 가능.")]
+        [SerializeField] private string groundLayerName = "Ground";
+
+        [Header("Materials (선택 — 비워두면 Unity 기본 회색)")]
+        [SerializeField] private Material holeMaterial;
+        [SerializeField] private Material undergroundMaterial;
+        [SerializeField] private Material rampMaterial;
+        [SerializeField] private Material stairsMaterial;
+
+        [Header("Visibility - 추가로 숨길 대상")]
+        [Tooltip("지하차도 진입 시 자기 카메라 시야에서 처리할 MeshRenderer. 도로 GameObject 등을 할당.")]
+        [SerializeField] private MeshRenderer[] extraHideRenderers;
+        [Tooltip("위 Renderer들에 swap할 반투명 material. 비워두면 단순 hide. " +
+                 "Transparent shader + alpha < 1 material을 만들어 할당하면 도로가 반투명으로 표시됨.")]
+        [SerializeField] private Material extraFadeMaterial;
+
+        private const string ContainerName = "_GeneratedVisuals";
+
+        private void OnEnable() => Rebuild();
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            // OnValidate 안에서 Destroy/Instantiate를 직접 호출하면 Unity가 경고 → delayCall로 다음 프레임에 처리.
+            UnityEditor.EditorApplication.delayCall += () =>
+            {
+                if (this == null) return;
+                Rebuild();
+            };
+        }
+#endif
+
+        [ContextMenu("Rebuild Visuals")]
+        public void Rebuild()
+        {
+#if UNITY_EDITOR
+            // Prefab Asset(에셋 파일 자체)은 hierarchy 변경이 금지됨. import 시 ExecuteAlways가 호출돼도 skip.
+            // Prefab Stage(편집 중)나 씬 인스턴스는 IsPersistent=false라 정상 동작.
+            if (UnityEditor.EditorUtility.IsPersistent(this)) return;
+#endif
+            var existing = transform.Find(ContainerName);
+            if (existing != null) DestroySafe(existing.gameObject);
+
+            var container = new GameObject(ContainerName);
+            container.transform.SetParent(transform, false);
+            container.hideFlags = HideFlags.DontSave;
+
+            // 좌표 기준: local origin = 구멍 시작 지점, lane 폭 중심(z=0).
+            float holeStartX = 0f;
+            float holeEndX   = holeLength;
+            float holeMidX   = holeLength * 0.5f;
+
+            float undergroundStartX = holeStartX - undergroundLeadIn;
+            float undergroundEndX   = undergroundStartX + undergroundLength;
+            float undergroundMidX   = (undergroundStartX + undergroundEndX) * 0.5f;
+            float undergroundY      = -undergroundDepth;
+
+            int groundLayer = LayerMask.NameToLayer(groundLayerName);
+            if (groundLayer < 0)
+            {
+                Debug.LogWarning($"[UndergroundGimmick] Layer '{groundLayerName}' not found in Tags & Layers. Falling back to Default(0). 지하 floor/ramp에 캐릭터가 착지 못할 수 있음 — PlayerController.groundLayer mask와 일치하는 이름으로 바꿔주세요.", this);
+                groundLayer = 0;
+            }
+
+            // (Hole_Visual 제거 — 도로가 반투명화되면 hole 영역이 자연스럽게 보임)
+
+            // 2) Hole Trigger (PlayerController가 감지)
+            var triggerGO = new GameObject("Hole_Trigger");
+            triggerGO.transform.SetParent(container.transform, false);
+            triggerGO.transform.localPosition = new Vector3(holeMidX, holeTriggerHeight * 0.5f, 0f);
+            triggerGO.hideFlags = HideFlags.DontSave;
+            var triggerCol = triggerGO.AddComponent<BoxCollider>();
+            triggerCol.isTrigger = true;
+            // trigger z 폭만 양쪽에서 clearance씩 줄여 옆 lane capsule이 침범하지 않게.
+            // 시각용 Hole_Visual quad는 holeWidth 그대로 → lane 영역 전체 덮음.
+            float triggerZ = Mathf.Max(0.1f, holeWidth - holeTriggerZClearance * 2f);
+            triggerCol.size = new Vector3(holeLength, holeTriggerHeight, triggerZ);
+
+            // 2-2) Wall Trigger — hole 영역 + 양옆 1 lane 덮음.
+            //      이 trigger 안에서 lane change 시도 시 PlayerController가 fall + knockback.
+            //      정상 진행(입력 X)에는 영향 없으므로 capsule radius 겹침과 무관.
+            var wallGO = new GameObject("Wall_Trigger");
+            wallGO.transform.SetParent(container.transform, false);
+            wallGO.transform.localPosition = new Vector3(holeMidX, holeTriggerHeight * 0.5f, 0f);
+            wallGO.hideFlags = HideFlags.DontSave;
+            var wallCol = wallGO.AddComponent<BoxCollider>();
+            wallCol.isTrigger = true;
+            wallCol.size = new Vector3(holeLength, holeTriggerHeight, holeWidth + 2f); // 옆 lane 1칸씩 포함
+            wallGO.AddComponent<UndergroundWall>();
+
+            // 2-3) Visibility Trigger — 지상부터 지하 floor까지 큰 영역.
+            //      자기 카메라 캐릭터가 안에 있는 동안 벽/천장 자식 끄고, 자기 카메라 cullingMask에서 도로 layer 제거.
+            //      Wall_Trigger와 분리한 이유: Wall_Trigger Y는 지상만이라 지하 floor에 도달하면 빠져나가 시야가 다시 가려짐.
+            var visGO = new GameObject("Visibility_Trigger");
+            visGO.transform.SetParent(container.transform, false);
+            float visYCenter = (holeTriggerHeight - undergroundDepth - 0.5f) * 0.5f;
+            float visYSize   = holeTriggerHeight + undergroundDepth + 0.5f;
+            visGO.transform.localPosition = new Vector3(undergroundMidX, visYCenter, 0f);
+            visGO.hideFlags = HideFlags.DontSave;
+            var visCol = visGO.AddComponent<BoxCollider>();
+            visCol.isTrigger = true;
+            visCol.size = new Vector3(undergroundLength, visYSize, holeWidth + 2f);
+            var visZone = visGO.AddComponent<UndergroundVisibilityZone>();
+            visZone.SetExtraRenderers(extraHideRenderers);
+            visZone.SetExtraFadeMaterial(extraFadeMaterial);
+            triggerGO.AddComponent<UndergroundHole>();
+
+            // 3) 지하 floor (Ground 레이어, 추락한 캐릭터 착지)
+            //    두께 1m — 입구 계단 마지막 단이 floor 안으로 살짝 들어가도 안 보이게.
+            CreateCube(container.transform, "Underground_Floor",
+                center: new Vector3(undergroundMidX, undergroundY - 0.5f, 0f),
+                size:   new Vector3(undergroundLength, 1f, holeWidth),
+                mat:    undergroundMaterial,
+                groundLayer: groundLayer);
+
+            // 4) 지하 좌/우 벽 — 지하 안쪽만 (y=undergroundY ~ 0). 지하 통로 전체 길이.
+            if (undergroundWallHeight > 0.01f)
+            {
+                float undWallY = undergroundY + undergroundWallHeight * 0.5f;
+                CreateCube(container.transform, "Underground_Wall_NegZ",
+                    center: new Vector3(undergroundMidX, undWallY, -holeWidth * 0.5f - 0.1f),
+                    size:   new Vector3(undergroundLength, undergroundWallHeight, 0.2f),
+                    mat:    undergroundMaterial,
+                    groundLayer: -1);
+                CreateCube(container.transform, "Underground_Wall_PosZ",
+                    center: new Vector3(undergroundMidX, undWallY, holeWidth * 0.5f + 0.1f),
+                    size:   new Vector3(undergroundLength, undergroundWallHeight, 0.2f),
+                    mat:    undergroundMaterial,
+                    groundLayer: -1);
+            }
+
+            // 4-2) 입구 가드 — hole 영역에만 지상 위로 (y=0 ~ entranceGuardHeight).
+            //      옆 lane에서 hole 쪽으로 진입하는 걸 시각적으로 막는 짧은 벽.
+            if (entranceGuardHeight > 0.01f)
+            {
+                float guardY = entranceGuardHeight * 0.5f;
+                CreateCube(container.transform, "Entrance_Guard_NegZ",
+                    center: new Vector3(holeMidX, guardY, -holeWidth * 0.5f - 0.1f),
+                    size:   new Vector3(holeLength, entranceGuardHeight, 0.2f),
+                    mat:    undergroundMaterial,
+                    groundLayer: -1);
+                CreateCube(container.transform, "Entrance_Guard_PosZ",
+                    center: new Vector3(holeMidX, guardY, holeWidth * 0.5f + 0.1f),
+                    size:   new Vector3(holeLength, entranceGuardHeight, 0.2f),
+                    mat:    undergroundMaterial,
+                    groundLayer: -1);
+            }
+
+            // 5) 지하 천장 (도로 밑면 분위기 — 구멍 영역은 비움)
+            float ceilingY = -0.3f;
+            float frontLen = Mathf.Max(0f, holeStartX - undergroundStartX);
+            float backLen  = Mathf.Max(0f, undergroundEndX - holeEndX);
+            if (frontLen > 0.01f)
+                CreateCube(container.transform, "Underground_Ceiling_Front",
+                    center: new Vector3(undergroundStartX + frontLen * 0.5f, ceilingY, 0f),
+                    size:   new Vector3(frontLen, 0.2f, holeWidth),
+                    mat:    undergroundMaterial,
+                    groundLayer: -1);
+            if (backLen > 0.01f)
+                CreateCube(container.transform, "Underground_Ceiling_Back",
+                    center: new Vector3(holeEndX + backLen * 0.5f, ceilingY, 0f),
+                    size:   new Vector3(backLen, 0.2f, holeWidth),
+                    mat:    undergroundMaterial,
+                    groundLayer: -1);
+
+            // 6) 출구 Ramp (지하 끝 → 지상) + 캐릭터 y 자동 보정용 trigger
+            if (exitRampLength > 0.01f)
+            {
+                float rampStartX = undergroundEndX - exitRampLength;
+                CreateRamp(container.transform, "Exit_Ramp",
+                    startCenter: new Vector3(rampStartX, undergroundY, 0f),
+                    length: exitRampLength,
+                    rise:   undergroundDepth,
+                    width:  holeWidth,
+                    mat:    rampMaterial,
+                    groundLayer: groundLayer);
+
+                // ramp 위 trigger — PlayerController가 안에 있을 때 캐릭터 y를 surface로 snap.
+                var rampTriggerGO = new GameObject("ExitRamp_Trigger");
+                rampTriggerGO.transform.SetParent(container.transform, false);
+                rampTriggerGO.transform.localPosition = new Vector3(
+                    rampStartX + exitRampLength * 0.5f,
+                    undergroundY + undergroundDepth * 0.5f + 0.5f, // ramp 위 0.5m 여유
+                    0f);
+                rampTriggerGO.hideFlags = HideFlags.DontSave;
+                var rampTriggerCol = rampTriggerGO.AddComponent<BoxCollider>();
+                rampTriggerCol.isTrigger = true;
+                rampTriggerCol.size = new Vector3(exitRampLength, undergroundDepth + 1.5f, holeWidth);
+                var exitRamp = rampTriggerGO.AddComponent<UndergroundExitRamp>();
+                // 시작/끝 world 좌표 = prefab world position + local offset.
+                exitRamp.startWorld = new Vector2(
+                    transform.position.x + rampStartX,
+                    transform.position.y + undergroundY);
+                exitRamp.endWorld = new Vector2(
+                    transform.position.x + rampStartX + exitRampLength,
+                    transform.position.y + 0f);
+            }
+
+            // 7-pre) 입구 ramp snap trigger — 계단 표면 따라 캐릭터가 부드럽게 내려가게.
+            //         hole trigger와 같은 영역. PlayerController가 둘 다 처리:
+            //         hole_trigger → ground 무시 / exit_ramp → y를 surface(0 → -depth)로 snap.
+            //         점프해서 hole 위로 통과하는 캐릭터는 vy>0 또는 갭>1m로 snap skip → 곡선 자유.
+            {
+                var entRampGO = new GameObject("Entrance_RampTrigger");
+                entRampGO.transform.SetParent(container.transform, false);
+                entRampGO.transform.localPosition = new Vector3(holeMidX, -undergroundDepth * 0.5f + 0.5f, 0f);
+                entRampGO.hideFlags = HideFlags.DontSave;
+                var entRampCol = entRampGO.AddComponent<BoxCollider>();
+                entRampCol.isTrigger = true;
+                entRampCol.size = new Vector3(holeLength, undergroundDepth + 1.5f, holeWidth);
+                var entRamp = entRampGO.AddComponent<UndergroundExitRamp>();
+                entRamp.startWorld = new Vector2(transform.position.x + holeStartX, transform.position.y + 0f);
+                entRamp.endWorld   = new Vector2(transform.position.x + holeEndX,   transform.position.y - undergroundDepth);
+            }
+
+            // 7) 입구 계단 (블록 여러 개) — 시각용, collider 없음.
+            //    각 단 cube 두께 = stepY → 옆면이 다음 단과 연속되어 계단 모양 형성.
+            //    마지막 단은 floor 안쪽으로 살짝 들어가지만 floor 두께(1m)가 가림.
+            //    UndergroundVisibilityZone의 hide 패턴(Underground_Wall_/Ceiling_/Entrance_Guard_)에
+            //    매칭 안 되도록 "Entrance_Stair_" prefix 사용 → 진입 시에도 계단 그대로 보임.
+            if (entranceStairCount > 0)
+            {
+                float stepX = holeLength / entranceStairCount;
+                float stepY = undergroundDepth / entranceStairCount;
+                for (int i = 0; i < entranceStairCount; i++)
+                {
+                    float centerX = (i + 0.5f) * stepX;
+                    float topY    = -(i + 1f) * stepY;
+                    float centerY = topY - stepY * 0.5f;
+                    CreateCube(container.transform, $"Entrance_Stair_{i}",
+                        center: new Vector3(centerX, centerY, 0f),
+                        size:   new Vector3(stepX, stepY, holeWidth),
+                        mat:    stairsMaterial,
+                        groundLayer: -1);
+                }
+            }
+        }
+
+        // ── 헬퍼 ──────────────────────────────
+
+        // groundLayer < 0 이면 시각 only (collider 제거). >= 0 이면 해당 layer로 두어 SphereCast가 잡게 함.
+        private void CreateCube(Transform parent, string n, Vector3 center, Vector3 size, Material mat, int groundLayer)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = n;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = center;
+            go.transform.localScale    = size;
+
+            if (groundLayer >= 0)
+            {
+                go.layer = groundLayer;
+            }
+            else if (go.TryGetComponent<Collider>(out var col))
+            {
+                // Destroy()는 다음 프레임 효력 → 그 사이 충돌 발생 시 캐릭터 막힘.
+                // enabled=false로 즉시 충돌 무효화 후 destroy.
+                col.enabled = false;
+                DestroySafe(col);
+            }
+
+            ApplyMat(go, mat);
+            go.hideFlags = HideFlags.DontSave;
+        }
+
+        private void CreateQuadOnFloor(Transform parent, string n, Vector3 center, float sizeX, float sizeZ, Material mat)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = n;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = center;
+            go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f); // XY → XZ 평면
+            go.transform.localScale    = new Vector3(sizeX, sizeZ, 1f);
+            if (go.TryGetComponent<Collider>(out var col)) DestroySafe(col);
+            ApplyMat(go, mat);
+            go.hideFlags = HideFlags.DontSave;
+        }
+
+        // 비탈(ramp): cube를 z축 회전시켜 표현. startCenter는 ramp의 낮은 쪽 시작점 중심.
+        // rise > 0 → +x로 가면서 +y로 올라가는 ramp (출구용).
+        // rise < 0 → +x로 가면서 -y로 내려가는 ramp (입구용).
+        // startCenter는 ramp의 시작 위치(+x 진입 지점)의 바닥 중심.
+        private void CreateRamp(Transform parent, string n, Vector3 startCenter, float length, float rise, float width, Material mat, int groundLayer)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = n;
+            go.transform.SetParent(parent, false);
+
+            // atan2(rise, length): rise>0이면 양수(오르막), rise<0이면 음수(내리막).
+            // Unity z축 +회전은 cube의 local +x를 world +y 쪽으로 보냄 → 부호 그대로 적용하면 cube가 (length, rise)와 같은 방향으로 누움.
+            float rotZ  = Mathf.Atan2(rise, length) * Mathf.Rad2Deg;
+            float hypot = Mathf.Sqrt(length * length + rise * rise);
+
+            go.transform.localPosition = startCenter + new Vector3(length * 0.5f, rise * 0.5f, 0f);
+            go.transform.localRotation = Quaternion.Euler(0f, 0f, rotZ);
+            go.transform.localScale    = new Vector3(hypot, 0.2f, width);
+
+            if (groundLayer >= 0) go.layer = groundLayer;
+            ApplyMat(go, mat);
+            go.hideFlags = HideFlags.DontSave;
+        }
+
+        private static void ApplyMat(GameObject go, Material mat)
+        {
+            if (mat == null) return;
+            if (go.TryGetComponent<MeshRenderer>(out var mr)) mr.sharedMaterial = mat;
+        }
+
+        private static void DestroySafe(Object o)
+        {
+            if (o == null) return;
+            if (Application.isPlaying) Destroy(o);
+            else                       DestroyImmediate(o);
+        }
+    }
+}
