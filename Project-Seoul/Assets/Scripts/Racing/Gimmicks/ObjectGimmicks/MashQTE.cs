@@ -5,9 +5,8 @@ using Seoul.Network.Game;
 public class MashQTE : BaseQTE
 {
     [Header("Mash Settings")]
-    [SerializeField] private Key mashKey = Key.Space;
     [SerializeField] private int requiredMashCount = 10;
-    [SerializeField] private BaseQTE.QteActionType actionType;
+    [SerializeField] private BaseQTE.QteActionType actionType = BaseQTE.QteActionType.SubwayGetOn;
     [SerializeField] private GameObject targetVisualObject;
 
     private int _currentMashCount = 0;
@@ -15,7 +14,7 @@ public class MashQTE : BaseQTE
     protected override void OnQteStart()
     {
         _currentMashCount = 0;
-        Debug.Log($"[{actionType}] 연타 QTE 시작! 제한시간: {timeLimit}초, 목표 연타수: {requiredMashCount}");
+        Debug.Log($"[{actionType}] J/K 연타 QTE 시작! 제한시간: {timeLimit}초, 목표 연타수: {requiredMashCount}");
     }
 
     protected override void OnQteUpdate()
@@ -23,14 +22,16 @@ public class MashQTE : BaseQTE
         var kb = Keyboard.current;
         if (kb == null) return;
 
-        if (kb[mashKey].wasPressedThisFrame)
+        // 🌟 [수정] J 키 또는 K 키가 이번 프레임에 눌렸는지 직접 확인
+        // QTE 중에는 QTEInputProvider가 활성이므로 J/K만 응답하고 다른 키는 자동 차단됨
+        if (kb[Key.J].wasPressedThisFrame || kb[Key.K].wasPressedThisFrame)
         {
             _currentMashCount++;
-            Debug.Log($"[{actionType}] 키 입력 감지! 현재 연타 횟수: {_currentMashCount} / {requiredMashCount}");
+            Debug.Log($"[{actionType}] J/K 입력 감지! 현재 연타 횟수: {_currentMashCount} / {requiredMashCount}");
 
             if (_currentMashCount >= requiredMashCount)
             {
-                HandleSuccess(); // 부모 클래스의 성공 처리 호출
+                HandleSuccess();
             }
         }
     }
