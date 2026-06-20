@@ -17,8 +17,14 @@ namespace Seoul.Network.Game
         [Header("Hole (도로 위 구멍)")]
         [Tooltip("구멍의 진행 방향 길이(x). 점프로 건너야 하는 거리.")]
         [SerializeField] private float holeLength = 4f;
-        [Tooltip("구멍의 lane 방향 폭(z). lane 2~3 막을 거면 lane spacing × 2.")]
-        [SerializeField] private float holeWidth = 2f;
+        [Tooltip("구멍이 시작되는 lane (포함). 예: lane 2~3을 막으려면 2.")]
+        [SerializeField] private int holeMinLane = 2;
+        [Tooltip("구멍이 끝나는 lane (포함). 예: lane 2~3을 막으려면 3.")]
+        [SerializeField] private int holeMaxLane = 3;
+        [Tooltip("LaneManager가 없을 때(에디터 단독 편집 등)만 쓰는 폴백 폭(z). 런타임/씬에 LaneManager가 있으면 무시되고 lane 범위로 계산됨.")]
+        [SerializeField] private float fallbackHoleWidth = 2f;
+        [Tooltip("Rebuild 시 transform.position.z를 LaneManager의 lane 중심으로 자동 정렬할지. 기존 좌표를 유지하고 폭만 lane 기반으로 받고 싶으면 끄세요.")]
+        [SerializeField] private bool snapTransformToLaneCenter = true;
         [Tooltip("ground 무시 trigger의 높이(y). 점프 정점보다 커야 통과 중 ground=false 유지.")]
         [SerializeField] private float holeTriggerHeight = 3f;
         [Tooltip("trigger의 z 폭을 holeWidth보다 양쪽에서 이만큼 줄여, 옆 lane 캐릭터 capsule이 trigger에 침범해 잘못 추락하는 걸 방지. 캐릭터 radius보다 약간 크게.")]
@@ -114,6 +120,41 @@ namespace Seoul.Network.Game
                 groundLayer = 0;
             }
 
+            // Lane → z(중심/폭) 변환. 런타임이면 Instance, 에디터 편집 중이면 FindFirstObjectByType.
+            // LaneManager가 전혀 없으면 fallback 폭 사용 (transform.position.z는 건드리지 않음).
+            var lm = LaneManager.Instance;
+#if UNITY_EDITOR
+            if (lm == null) lm = FindFirstObjectByType<LaneManager>();
+#endif
+            float holeWidth;
+            // Wall/Visibility trigger가 hole 양옆에 추가로 덮을 폭(편측). LaneSpacing × 1 = 옆 lane 1칸.
+            float sideLaneMargin;
+            if (lm != null)
+            {
+                int minLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                int maxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                holeWidth = lm.GetLaneSpanZ(minLane, maxLane);
+                sideLaneMargin = lm.LaneSpacing;
+
+                if (snapTransformToLaneCenter)
+                {
+                    float centerZ = lm.GetLaneCenterZ(minLane, maxLane);
+                    if (!Mathf.Approximately(transform.position.z, centerZ))
+                    {
+                        var p = transform.position;
+                        p.z = centerZ;
+                        transform.position = p;
+                    }
+                }
+            }
+            else
+            {
+                holeWidth = fallbackHoleWidth;
+                sideLaneMargin = 1f;
+            }
+            // 양옆 합치면 lane 2칸 폭.
+            float sideMarginBoth = sideLaneMargin * 2f;
+
             // (Hole_Visual 제거 — 도로가 반투명화되면 hole 영역이 자연스럽게 보임)
 
             // 2) Hole Trigger (PlayerController가 감지)
@@ -137,7 +178,7 @@ namespace Seoul.Network.Game
             wallGO.hideFlags = HideFlags.DontSave;
             var wallCol = wallGO.AddComponent<BoxCollider>();
             wallCol.isTrigger = true;
-            wallCol.size = new Vector3(holeLength, holeTriggerHeight, holeWidth + 2f); // 옆 lane 1칸씩 포함
+            wallCol.size = new Vector3(holeLength, holeTriggerHeight, holeWidth + sideMarginBoth); // 옆 lane 1칸씩 포함
             wallGO.AddComponent<UndergroundWall>();
 
             // 2-3) Visibility Trigger — 지상부터 지하 floor까지 큰 영역.
@@ -151,7 +192,7 @@ namespace Seoul.Network.Game
             visGO.hideFlags = HideFlags.DontSave;
             var visCol = visGO.AddComponent<BoxCollider>();
             visCol.isTrigger = true;
-            visCol.size = new Vector3(undergroundLength, visYSize, holeWidth + 2f);
+            visCol.size = new Vector3(undergroundLength, visYSize, holeWidth + sideMarginBoth);
             var visZone = visGO.AddComponent<UndergroundVisibilityZone>();
             visZone.SetExtraRenderers(extraHideRenderers);
             visZone.SetExtraFadeMaterial(extraFadeMaterial);

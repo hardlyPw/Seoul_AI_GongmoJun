@@ -206,18 +206,33 @@ public class PlayerController : MonoBehaviour
     // - 위로 가는 중(점프, vy>0.1)에만 skip → 점프 곡선 자유.
     // - 추락(vy<0)에도 snap 작동 → 입구 계단을 부드럽게 따라 내려옴.
     // - surface와의 갭이 1m를 넘으면 skip (점프 정점 등 — 캐릭터 곡선이 다시 surface 가까이 오면 다시 snap).
+    // 주의: ApplyVelocity가 이미 _rb.MovePosition으로 (oldPos + vel*dt) target을 설정해뒀지만
+    //       _rb.position은 다음 물리 step까지 OLD 값. 여기서 _rb.position을 그대로 쓰면
+    //       방금 설정한 전진 target을 덮어써서 x 이동이 통째로 사라짐. velocity를 다시 적용한 뒤 y만 보정.
     private void SnapToExitRamp()
     {
         if (_currentExitRamp == null) return;
         if (_velocity.y > 0.1f) return;
 
-        float surfaceY = _currentExitRamp.SurfaceYAt(transform.position.x);
-        float targetY  = surfaceY + _col.height * 0.5f; // capsule pivot center 가정
-        if (Mathf.Abs(targetY - transform.position.y) > 1f) return;
+        Vector3 newPos = _rb.position + _velocity * Time.fixedDeltaTime;
 
-        var pos = _rb.position;
-        pos.y = targetY;
-        _rb.MovePosition(pos);
+        // ApplyVelocity가 적용하던 lane z snap을 여기서도 동일하게 보존 (없으면 ramp 중 lane change overshoot).
+        if (LaneManager.Instance != null)
+        {
+            float targetZ = LaneManager.Instance.GetLaneZ(_currentLane);
+            if (Mathf.Sign(targetZ - _rb.position.z) != Mathf.Sign(targetZ - newPos.z)
+                && Mathf.Abs(targetZ - newPos.z) < laneSnapSpeed * Time.fixedDeltaTime * 1.5f)
+            {
+                newPos.z = targetZ;
+            }
+        }
+
+        float surfaceY = _currentExitRamp.SurfaceYAt(newPos.x);
+        float targetY  = surfaceY + _col.height * 0.5f; // capsule pivot center 가정
+        if (Mathf.Abs(targetY - newPos.y) > 1f) return;
+
+        newPos.y = targetY;
+        _rb.MovePosition(newPos);
         _velocity.y = 0f;
     }
 

@@ -215,6 +215,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: OverpassGimmick
       objectReference: {fileID: 0}
+    - target: {fileID: 6400000000000000001, guid: 1a3b5c7d9e2f4a6b8c0d2e4f6a8b0c1d, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 6400000000000000002, guid: 1a3b5c7d9e2f4a6b8c0d2e4f6a8b0c1d, type: 3}
       propertyPath: m_LocalPosition.x
       value: 13
@@ -225,7 +229,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6400000000000000002, guid: 1a3b5c7d9e2f4a6b8c0d2e4f6a8b0c1d, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -3.95
+      value: -2.5
       objectReference: {fileID: 0}
     - target: {fileID: 6400000000000000002, guid: 1a3b5c7d9e2f4a6b8c0d2e4f6a8b0c1d, type: 3}
       propertyPath: m_LocalRotation.w
@@ -254,6 +258,14 @@ PrefabInstance:
     - target: {fileID: 6400000000000000002, guid: 1a3b5c7d9e2f4a6b8c0d2e4f6a8b0c1d, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6400000000000000003, guid: 1a3b5c7d9e2f4a6b8c0d2e4f6a8b0c1d, type: 3}
+      propertyPath: bridgeMaxLane
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 6400000000000000003, guid: 1a3b5c7d9e2f4a6b8c0d2e4f6a8b0c1d, type: 3}
+      propertyPath: bridgeMinLane
+      value: 5
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -1942,7 +1954,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6300000000000000002, guid: 9d5a3c1e4f6b5c9d0e7f8a1b2c3d4e5f, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 2.5
+      value: 0.5
       objectReference: {fileID: 0}
     - target: {fileID: 6300000000000000002, guid: 9d5a3c1e4f6b5c9d0e7f8a1b2c3d4e5f, type: 3}
       propertyPath: m_LocalRotation.w
@@ -2155,7 +2167,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6695356949397916342, guid: 3344e6d993d4ed347bfeb61a965967ac, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 39.55
+      value: 40.87
       objectReference: {fileID: 0}
     - target: {fileID: 6695356949397916342, guid: 3344e6d993d4ed347bfeb61a965967ac, type: 3}
       propertyPath: m_LocalPosition.y
@@ -2336,7 +2348,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6695356949397916342, guid: 3344e6d993d4ed347bfeb61a965967ac, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 30
+      value: 36.32
       objectReference: {fileID: 0}
     - target: {fileID: 6695356949397916342, guid: 3344e6d993d4ed347bfeb61a965967ac, type: 3}
       propertyPath: m_LocalPosition.y
