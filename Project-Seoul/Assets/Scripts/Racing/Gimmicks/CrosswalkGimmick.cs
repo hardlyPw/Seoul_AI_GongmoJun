@@ -72,5 +72,54 @@ namespace Seoul.Network.Game
             if (greenLight) greenLight.SetActive(green);
             if (redLight)   redLight.SetActive(!green);
         }
+
+        public void PenalizePlayer(PlayerController player)
+        {
+            if (!IsServer || player == null || player.IsFallen) return;
+
+            player.TriggerFall();
+
+            if (!player.TryGetComponent<NetworkObject>(out var playerNetObj)) return;
+            var ownerClientId = playerNetObj.OwnerClientId;
+            if (ownerClientId == NetworkManager.ServerClientId) return;
+
+            var rpcParams = new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams
+                {
+                    TargetClientIds = new[] { ownerClientId }
+                }
+            };
+            TriggerPlayerFallClientRpc(playerNetObj.NetworkObjectId, rpcParams);
+        }
+
+        public void RequestPenalty(ulong playerNetworkObjectId)
+        {
+            if (!IsClient || IsServer) return;
+            RequestPenaltyServerRpc(playerNetworkObjectId);
+        }
+
+        [ServerRpc(RequireOwnership = false)]
+        private void RequestPenaltyServerRpc(ulong playerNetworkObjectId, ServerRpcParams rpcParams = default)
+        {
+            if (IsGreenNet.Value) return;
+            if (NetworkManager == null) return;
+            if (!NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(playerNetworkObjectId, out var playerNetObj)) return;
+            if (playerNetObj.OwnerClientId != rpcParams.Receive.SenderClientId) return;
+            if (!playerNetObj.TryGetComponent<PlayerController>(out var player)) return;
+
+            PenalizePlayer(player);
+        }
+
+        [ClientRpc]
+        private void TriggerPlayerFallClientRpc(ulong playerNetworkObjectId, ClientRpcParams rpcParams = default)
+        {
+            if (NetworkManager == null) return;
+            if (!NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(playerNetworkObjectId, out var playerNetObj)) return;
+            if (!playerNetObj.IsOwner) return;
+            if (!playerNetObj.TryGetComponent<PlayerController>(out var player)) return;
+
+            player.TriggerFall();
+        }
     }
 }
