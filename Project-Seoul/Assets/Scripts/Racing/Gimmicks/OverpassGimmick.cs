@@ -5,7 +5,7 @@ namespace Seoul.Network.Game
     // 육교 기믹 (정적 배치, 멀티 동기화 없음).
     // - 구성: 입구 계단 → 다리 위 평평한 길 → 출구 계단.
     // - 계단은 시각용 cube. 캐릭터 y는 UndergroundExitRamp(재사용) snap으로 보정.
-    // - 다리 + 계단 전체 영역에 UndergroundWall trigger → 옆으로 떨어지는 lane change 차단.
+    // - lane change: 다리 평평한 구간 위에선 LaneRangeZone으로 [bridgeMinLane, bridgeMaxLane]만 허용. 계단/도로선 자유.
     // - 진행 흐름 (캐릭터 +x):
     //     도로 → 입구 ramp snap trigger → 자동 y 올라감 → 다리 위 (Bridge_Floor, ground layer) →
     //     출구 ramp snap trigger → 자동 y 내려감 → 도로
@@ -162,17 +162,21 @@ namespace Seoul.Network.Game
                     groundLayer: -1);
             }
 
-            // 5) Lane Lock Trigger (육교 전체) — UndergroundWall 재사용.
-            //    PlayerController가 _underWallOverlap > 0 일 때 lane change 차단.
+            // 5) Lane Range Zone — 다리 평평한 구간 위에서만 lane change를 다리 lane 범위로 제한.
+            //    계단은 포함 안 함 → 계단 위/아래선 자유 (계단 오를 때 lane 정렬 가능).
+            //    이미 범위 밖 lane에서 진입해도 안쪽으로 좁히는 변경은 허용 (PlayerController.HandleLaneChange 참조).
+            if (lm != null)
             {
-                var lockGO = new GameObject("LaneLock_Trigger");
-                lockGO.transform.SetParent(container.transform, false);
-                lockGO.transform.localPosition = new Vector3(totalCenterX, bridgeHeight + bridgeWallHeight * 0.5f, 0f);
-                lockGO.hideFlags = HideFlags.DontSave;
-                var lockCol = lockGO.AddComponent<BoxCollider>();
-                lockCol.isTrigger = true;
-                lockCol.size = new Vector3(totalLength, bridgeWallHeight + 2f, bridgeWidth + sideMarginBoth);
-                lockGO.AddComponent<UndergroundWall>();
+                var zoneGO = new GameObject("Bridge_LaneRangeZone");
+                zoneGO.transform.SetParent(container.transform, false);
+                zoneGO.transform.localPosition = new Vector3(bridgeCenterX, bridgeHeight + bridgeWallHeight * 0.5f, 0f);
+                zoneGO.hideFlags = HideFlags.DontSave;
+                var zoneCol = zoneGO.AddComponent<BoxCollider>();
+                zoneCol.isTrigger = true;
+                zoneCol.size = new Vector3(bridgeLength, bridgeWallHeight + 2f, bridgeWidth + sideMarginBoth);
+                var zone = zoneGO.AddComponent<LaneRangeZone>();
+                zone.MinLane = Mathf.Clamp(Mathf.Min(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
+                zone.MaxLane = Mathf.Clamp(Mathf.Max(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
             }
 
             // 6) 입구 ramp snap trigger (UndergroundExitRamp 재사용, start=낮 end=높)

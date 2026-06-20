@@ -4,12 +4,13 @@ namespace Seoul.Network.Game
 {
     // 지하차도 기믹 (정적 배치, 멀티 동기화 없음).
     // - 씬에 prefab을 끌어다 놓기만 하면 시각/충돌이 자동 생성된다.
-    // - 인스펙터에서 holeLength/holeWidth/undergroundDepth 등을 바꾸면 에디터에서 즉시 갱신.
+    // - 인스펙터에서 holeLength/holeMinLane/holeMaxLane/undergroundDepth 등을 바꾸면 에디터에서 즉시 갱신.
     // - 동작 원리:
     //   * 도로 위에 검은 quad("구멍" 그림) + UndergroundHole trigger 얹음.
     //   * 캐릭터가 trigger에 진입하면 PlayerController가 ground 판정을 무시 → 추락.
     //   * 점프해서 trigger를 지나가면 _velocity.y가 살아있어 도로 반대편에 그대로 착지.
     //   * 떨어진 캐릭터는 지하 floor(별도 Ground collider)에 착지 후 출구 ramp로 다시 지상.
+    // - lane change: 통로/계단/exit ramp 전체에 LaneRangeZone → [holeMinLane, holeMaxLane]만 허용 (옆 lane으로 빠져 추락 방지).
     // - 자동 생성된 자식들은 HideFlags.DontSave → prefab/scene에 저장되지 않고 OnEnable 때마다 재생성.
     [ExecuteAlways]
     public class UndergroundGimmick : MonoBehaviour
@@ -169,21 +170,31 @@ namespace Seoul.Network.Game
             float triggerZ = Mathf.Max(0.1f, holeWidth - holeTriggerZClearance * 2f);
             triggerCol.size = new Vector3(holeLength, holeTriggerHeight, triggerZ);
 
-            // 2-2) Wall Trigger — hole 영역 + 양옆 1 lane 덮음.
-            //      이 trigger 안에서 lane change 시도 시 PlayerController가 fall + knockback.
-            //      정상 진행(입력 X)에는 영향 없으므로 capsule radius 겹침과 무관.
-            var wallGO = new GameObject("Wall_Trigger");
-            wallGO.transform.SetParent(container.transform, false);
-            wallGO.transform.localPosition = new Vector3(holeMidX, holeTriggerHeight * 0.5f, 0f);
-            wallGO.hideFlags = HideFlags.DontSave;
-            var wallCol = wallGO.AddComponent<BoxCollider>();
-            wallCol.isTrigger = true;
-            wallCol.size = new Vector3(holeLength, holeTriggerHeight, holeWidth + sideMarginBoth); // 옆 lane 1칸씩 포함
-            wallGO.AddComponent<UndergroundWall>();
+            // 2-2) Lane Range Zone — 지하 통로 + 계단 + exit ramp 전체 덮음.
+            //      안에 있는 동안 lane change를 [holeMinLane, holeMaxLane]로 제한 (PlayerController.HandleLaneChange).
+            //      이미 범위 밖 lane에서 진입해도 안쪽으로 좁히는 변경은 허용 → 입구 정렬 보조.
+            //      계단 위/아래/지하 floor에서 옆 lane으로 빠져 추락하는 사고 방지.
+            if (lm != null)
+            {
+                var zoneGO = new GameObject("LaneRange_Trigger");
+                zoneGO.transform.SetParent(container.transform, false);
+                float zoneYCenter = (holeTriggerHeight - undergroundDepth - 0.5f) * 0.5f;
+                float zoneYSize   = holeTriggerHeight + undergroundDepth + 0.5f;
+                zoneGO.transform.localPosition = new Vector3(undergroundMidX, zoneYCenter, 0f);
+                zoneGO.hideFlags = HideFlags.DontSave;
+                var zoneCol = zoneGO.AddComponent<BoxCollider>();
+                zoneCol.isTrigger = true;
+                zoneCol.size = new Vector3(undergroundLength, zoneYSize, holeWidth + sideMarginBoth);
+                var zone = zoneGO.AddComponent<LaneRangeZone>();
+                int minLaneZ = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                int maxLaneZ = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                zone.MinLane = minLaneZ;
+                zone.MaxLane = maxLaneZ;
+            }
 
             // 2-3) Visibility Trigger — 지상부터 지하 floor까지 큰 영역.
             //      자기 카메라 캐릭터가 안에 있는 동안 벽/천장 자식 끄고, 자기 카메라 cullingMask에서 도로 layer 제거.
-            //      Wall_Trigger와 분리한 이유: Wall_Trigger Y는 지상만이라 지하 floor에 도달하면 빠져나가 시야가 다시 가려짐.
+            //      LaneRangeZone과 분리한 이유: 시야는 UndergroundVisibilityZone 전용 컴포넌트가 처리해야 함 (renderer/cullingMask 관리).
             var visGO = new GameObject("Visibility_Trigger");
             visGO.transform.SetParent(container.transform, false);
             float visYCenter = (holeTriggerHeight - undergroundDepth - 0.5f) * 0.5f;

@@ -72,6 +72,8 @@ public class PlayerController : MonoBehaviour
     private int _underWallOverlap;
     // 현재 캐릭터가 위에 있는 출구 ramp (없으면 null). FixedUpdate에서 캐릭터 y를 ramp surface로 자동 보정.
     private Seoul.Network.Game.UndergroundExitRamp _currentExitRamp;
+    // 현재 캐릭터가 들어있는 lane 범위 제한 zone (없으면 null). 안에서 lane change target이 범위 밖이면 차단.
+    private Seoul.Network.Game.LaneRangeZone _currentLaneRangeZone;
     private int _currentLane;
     private float _laneChangeCooldownTimer;
     private float _jumpBufferTimer;
@@ -366,15 +368,33 @@ public class PlayerController : MonoBehaviour
         {
             // 지하차도 영역에서 lane change 시도 → fall (옆에서 hole로 진입 방지).
             if (_underWallOverlap > 0) return; // 지하차도 옆 벽 — lane change 자체 차단 (페널티 없이 막힘)
-            _currentLane--;
+            int target = _currentLane - 1;
+            // LaneRangeZone(육교/지하차도) 안에선 target이 zone 범위 밖이면 차단 (안쪽으로 좁히는 변경은 허용).
+            if (_currentLaneRangeZone != null && IsOutsideRangeAndAwayFromCurrent(target)) return;
+            _currentLane = target;
             _laneChangeCooldownTimer = laneChangeCooldown;
         }
         else if (v < -0.5f && _currentLane < laneCount - 1)
         {
             if (_underWallOverlap > 0) return; // 지하차도 옆 벽 — lane change 자체 차단 (페널티 없이 막힘)
-            _currentLane++;
+            int target = _currentLane + 1;
+            if (_currentLaneRangeZone != null && IsOutsideRangeAndAwayFromCurrent(target)) return;
+            _currentLane = target;
             _laneChangeCooldownTimer = laneChangeCooldown;
         }
+    }
+
+    // zone 범위 밖으로 "벗어나는" 방향인지 판정. 현재 lane이 이미 밖이어도 안쪽으로 좁히는 변경(예: 4 → 3)은 허용.
+    private bool IsOutsideRangeAndAwayFromCurrent(int targetLane)
+    {
+        int min = _currentLaneRangeZone.MinLane;
+        int max = _currentLaneRangeZone.MaxLane;
+        if (targetLane >= min && targetLane <= max) return false; // target이 범위 안 → 허용
+
+        // target이 범위 밖 — 현재 lane보다 더 멀어지는 경우만 차단.
+        if (targetLane < min && targetLane < _currentLane) return true; // 더 작은 쪽으로 벗어남
+        if (targetLane > max && targetLane > _currentLane) return true; // 더 큰 쪽으로 벗어남
+        return false;
     }
 
 
@@ -496,6 +516,9 @@ public class PlayerController : MonoBehaviour
         var ramp = col.GetComponentInParent<Seoul.Network.Game.UndergroundExitRamp>();
         if (ramp != null) _currentExitRamp = ramp;
 
+        var laneZone = col.GetComponentInParent<Seoul.Network.Game.LaneRangeZone>();
+        if (laneZone != null) _currentLaneRangeZone = laneZone;
+
         if (_currentState == StunState) return; // 스턴 상태 면역(무적) 유지
 
         // 아이템 관련 수정
@@ -519,6 +542,9 @@ public class PlayerController : MonoBehaviour
 
         var ramp = col.GetComponentInParent<Seoul.Network.Game.UndergroundExitRamp>();
         if (ramp != null && _currentExitRamp == ramp) _currentExitRamp = null;
+
+        var laneZone = col.GetComponentInParent<Seoul.Network.Game.LaneRangeZone>();
+        if (laneZone != null && _currentLaneRangeZone == laneZone) _currentLaneRangeZone = null;
     }
 
     // ObstacleBase에서 호출. 충돌 지점을 받아 knockback 방향 계산.
