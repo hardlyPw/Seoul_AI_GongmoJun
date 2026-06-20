@@ -106,7 +106,19 @@ namespace Seoul.Network.Game
                 SpawnPlayerForClient(clientId);
             }
 
+            // 모든 클라이언트가 로딩을 완료했으므로, 일제히 까만 화면을 걷어내고 카운트다운을 시작합니다.
+            TriggerFadeInClientRpc();
+
             StartCoroutine(CountdownRoutine());
+        }
+
+        [ClientRpc]
+        private void TriggerFadeInClientRpc()
+        {
+            if (SceneTransition.Instance != null && SceneTransition.Instance.ManualFadeIn)
+            {
+                SceneTransition.Instance.TriggerFadeIn();
+            }
         }
 
         private IEnumerator CountdownRoutine()
@@ -123,8 +135,15 @@ namespace Seoul.Network.Game
             }
 
             CountdownRemaining.Value = 0f;
-            State.Value = RaceState.Racing;
+            
+            // 모든 클라이언트가 완벽하게 동일한 프레임에 출발하도록 미래의 시간을 전송합니다.
+            double exactStartTime = NetworkManager.Singleton.ServerTime.Time + 0.2;
+            foreach (var p in NetworkPlayer.All)
+            {
+                if (p != null) p.ScheduleExactStartClientRpc(exactStartTime);
+            }
 
+            State.Value = RaceState.Racing;
             Debug.Log("[NetworkRaceManager] Race started!");
         }
 

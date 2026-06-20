@@ -149,19 +149,37 @@ namespace Seoul.Network.Game
             // 이후 sceneLoaded 핸들러가 페이드인 시작
         }
 
+        public bool ManualFadeIn { get; set; } = false;
+
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            // 만약 로드된 씬에 NetworkRaceManager가 있다면, 이는 스테이지 1 시작을 의미합니다.
+            // 모든 클라이언트가 로딩을 마칠 때까지 강제로 까만 화면에서 대기하도록 설정합니다.
+            if (FindObjectOfType<NetworkRaceManager>() != null)
+            {
+                ManualFadeIn = true;
+            }
+
             // 패널이 화면을 덮고 있는 상태(0)면 페이드인 진행.
-            // 아니면 (초기 부팅 등) 위치만 우측 오프스크린으로 리셋.
+            // 단, ManualFadeIn이 켜져 있다면 자동으로 페이드인하지 않고 대기합니다.
             if (Mathf.Abs(_panel.anchoredPosition.x) < ScreenW * 0.5f)
             {
-                StartCoroutine(FadeInCoroutine());
+                if (!ManualFadeIn)
+                {
+                    StartCoroutine(FadeInCoroutine());
+                }
             }
             else
             {
                 SetPanelOffsetRight();
                 _isTransitioning = false;
             }
+        }
+
+        public void TriggerFadeIn()
+        {
+            ManualFadeIn = false;
+            StartCoroutine(FadeInCoroutine());
         }
 
         // 오 → 왼: 패널이 오른쪽 밖에서 들어와 화면을 덮음 → 화면이 오른쪽부터 어두워짐
