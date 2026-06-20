@@ -25,45 +25,32 @@ public abstract class BaseQTE : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         if (!other.TryGetComponent<NetworkPlayer>(out var netPlayer)) return;
-        if (!netPlayer.IsLocalPlayer || netPlayer.IsFullyFinished.Value) return;
-
+        if (netPlayer.IsFullyFinished.Value) return;
         if (_isQteActive) return;
+
+        // 🌟 [핵심 수정] 오직 이 캐릭터의 소유자(Owner) 화면에서만 이 QTE 컴포넌트가 활성화되도록 합니다.
+        // 다른 사람 화면에서 내가 트리거에 부딪힌 것은 무시합니다.
+        if (!netPlayer.IsOwner) return; 
 
         _localNetworkPlayer = netPlayer;
         _isQteActive = true;
         _timer = timeLimit;
 
-        // 🌟 1. 속도 감소 적용
         ApplyPlayerSpeed(speedSlowMultiplier);
 
-        // 🌟 2. [추가] 플레이어 인풋 잠금 (대시나 점프 씹힘 및 선점 방지)
         var controller = _localNetworkPlayer.GetComponent<PlayerController>();
         if (controller != null)
         {
-            // 아무 입력도 받지 않는 빈 인풋 프로바이더로 교체하여 조작 권한을 QTE 스크립트가 온전히 가져옴
-            controller.Initialize(new NullInputProvider());
+            controller.Initialize(new QTEInputProvider());
         }
 
         OnQteStart();
     }
 
-
-
-    private void OnTriggerExit(Collider other)
-    {
-        if (!other.TryGetComponent<NetworkPlayer>(out var netPlayer)) return;
-        if (netPlayer.IsLocalPlayer && _localNetworkPlayer == netPlayer)
-        {
-            ResetQteSession();
-        }
-    }
-
-    protected abstract void OnQteStart();
-    protected abstract void OnQteUpdate();
-
     protected virtual void Update()
     {
-        if (!_isQteActive) return;
+        // 이제 OnTriggerEnter에서 IsOwner인 경우만 활성화했으므로 안전합니다.
+        if (!_isQteActive || _localNetworkPlayer == null) return;
 
         _timer -= Time.deltaTime;
         if (_timer <= 0f)
@@ -74,6 +61,20 @@ public abstract class BaseQTE : MonoBehaviour
 
         OnQteUpdate();
     }
+
+
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (!other.TryGetComponent<NetworkPlayer>(out var netPlayer)) return;
+        if (netPlayer.IsOwner && _localNetworkPlayer == netPlayer)
+        {
+            ResetQteSession();
+        }
+    }
+
+    protected abstract void OnQteStart();
+    protected abstract void OnQteUpdate();
 
     public enum QteActionType
     {
@@ -116,6 +117,7 @@ public abstract class BaseQTE : MonoBehaviour
             var controller = _localNetworkPlayer.GetComponent<PlayerController>();
             if (controller != null)
             {
+                // QTE 종료 후 원래 입력 방식으로 복구
                 controller.Initialize(new PlayerInputProvider());
             }
         }
@@ -124,6 +126,11 @@ public abstract class BaseQTE : MonoBehaviour
         _isQteActive = false;
         _localNetworkPlayer = null;
     }
+
+    /// <summary>
+    /// QTE 활성화 상태 확인 (QTE 중 다른 입력 차단용)
+    /// </summary>
+    public bool IsQTEActive => _isQteActive;
     protected abstract void OnLocalSuccessVisual();
 
     // BaseQTE.cs 내부의 기존 비어있던 메서드를 수정합니다.
