@@ -783,26 +783,18 @@ public class PlayerController : MonoBehaviour
 
     private void AddOcclusionRenderers(Transform hitT)
     {
-        Transform t = hitT;
-        while (t != null)
+        if (hitT == null) return;
+        if (hitT == transform || hitT.IsChildOf(transform)) return;
+
+        var rs = hitT.GetComponentsInChildren<Renderer>(includeInactive: false);
+        for (int i = 0; i < rs.Length; i++)
         {
-            if (t == transform || t.IsChildOf(transform)) return;
+            var r = rs[i];
+            if (r == null) continue;
+            if (r.transform == transform || r.transform.IsChildOf(transform)) continue;
 
-            var rs = t.GetComponentsInChildren<Renderer>(includeInactive: false);
-            bool foundAny = false;
-            for (int i = 0; i < rs.Length; i++)
-            {
-                var r = rs[i];
-                if (r == null) continue;
-                if (r.transform == transform || r.transform.IsChildOf(transform)) continue;
-
-                foundAny = true;
-                _occlusionCurrent.Add(r);
-                if (!_occlusionState.ContainsKey(r)) ApplyOcclusion(r);
-            }
-
-            if (foundAny) return;
-            t = t.parent;
+            _occlusionCurrent.Add(r);
+            if (!_occlusionState.ContainsKey(r)) ApplyOcclusion(r);
         }
     }
 

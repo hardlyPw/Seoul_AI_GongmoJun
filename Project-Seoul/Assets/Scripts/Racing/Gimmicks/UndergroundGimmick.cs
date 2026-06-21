@@ -90,6 +90,7 @@ namespace Seoul.Network.Game
         [SerializeField] private Material extraFadeMaterial;
 
         private const string ContainerName = "_GeneratedVisuals";
+        private static Material s_RuntimeFallbackMaterial;
 
         private void OnEnable() => Rebuild();
 
@@ -521,8 +522,32 @@ namespace Seoul.Network.Game
 
         private static void ApplyMat(GameObject go, Material mat)
         {
-            if (mat == null) return;
+            if (mat == null) mat = RuntimeFallbackMaterial;
             if (go.TryGetComponent<MeshRenderer>(out var mr)) mr.sharedMaterial = mat;
+        }
+
+        private static Material RuntimeFallbackMaterial
+        {
+            get
+            {
+                if (s_RuntimeFallbackMaterial != null) return s_RuntimeFallbackMaterial;
+
+                var shader = Shader.Find("Universal Render Pipeline/Lit")
+                    ?? Shader.Find("Universal Render Pipeline/Simple Lit")
+                    ?? Shader.Find("Standard");
+                if (shader == null) return null;
+
+                s_RuntimeFallbackMaterial = new Material(shader)
+                {
+                    name = "GeneratedGimmickFallbackMaterial",
+                    hideFlags = HideFlags.DontSave
+                };
+                if (s_RuntimeFallbackMaterial.HasProperty("_BaseColor"))
+                    s_RuntimeFallbackMaterial.SetColor("_BaseColor", new Color(0.45f, 0.45f, 0.45f, 1f));
+                else if (s_RuntimeFallbackMaterial.HasProperty("_Color"))
+                    s_RuntimeFallbackMaterial.SetColor("_Color", new Color(0.45f, 0.45f, 0.45f, 1f));
+                return s_RuntimeFallbackMaterial;
+            }
         }
 
         private static void DestroySafe(Object o)

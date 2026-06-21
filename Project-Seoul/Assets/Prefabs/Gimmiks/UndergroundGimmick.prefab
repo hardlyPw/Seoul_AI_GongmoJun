@@ -65,9 +65,9 @@ MonoBehaviour:
   exitGuardForwardOffset: -6
   entranceStairCount: 5
   groundLayerName: Ground
-  holeMaterial: {fileID: 0}
-  undergroundMaterial: {fileID: 0}
-  rampMaterial: {fileID: 0}
-  stairsMaterial: {fileID: 0}
+  holeMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
+  undergroundMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
+  rampMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
+  stairsMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
   extraHideRenderers: []
   extraFadeMaterial: {fileID: 2100000, guid: de2aaff75f5b90541bd60507ee267a44, type: 2}

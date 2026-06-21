@@ -24,7 +24,7 @@ public class PlayerInputProvider : IInputProvider
     public bool GetSprint()       => Keyboard.current?.jKey.isPressed           ?? false;
 
     public bool GetItemUse()      => Keyboard.current?.lKey.wasPressedThisFrame ?? false;
-    public bool GetInteractDown() => Keyboard.current?.qKey.wasPressedThisFrame ?? false;
+    public bool GetInteractDown() => Keyboard.current?.eKey.wasPressedThisFrame ?? false;
     public bool GetQTEKeyDown(Key key)
     {
         if (Keyboard.current == null) return false;
