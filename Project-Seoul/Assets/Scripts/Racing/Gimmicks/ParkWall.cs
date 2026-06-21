@@ -5,7 +5,9 @@ using UnityEngine;
 namespace Seoul.Network.Game
 {
     // 공원 정문 양옆 차단벽.
-    // - 충돌 처리는 PlayerController.OnTriggerEnter가 ObstacleBase로 일괄 (다른 장애물과 동일).
+    // - 닿으면 Penalty: 감속 + 무적 + 깜빡임. lane change는 막지 않음.
+    //   (LaneRangeZone(Penalty)을 같은 GameObject에 부착 → PlayerController.OnTriggerEnter에서 무적 타이머가
+    //    먼저 세팅돼 ObstacleBase KnockDown도 같은 호출에서 자연스럽게 면역됨.)
     // - lane 범위는 서버가 Spawn 직후 NetworkVariable로 전파 → 각 클라가 자기 측 LaneManager로 정렬.
     //   (BoxCollider.size는 NGO 자동 동기화 대상이 아니라 클라별 적용 필요.)
     // - BoxCollider + 시각용 Cube는 코드가 만든다. prefab은 빈 GameObject + NetworkObject + 이 컴포넌트만 있으면 됨.
@@ -18,6 +20,16 @@ namespace Seoul.Network.Game
         [SerializeField] private float height = 3f;
         [Tooltip("벽 시각용 머티리얼. 비워두면 Unity 기본 회색.")]
         [SerializeField] private Material wallMaterial;
+
+        [Header("Penalty 효과 파라미터")]
+        [Tooltip("감속 비율 (0.5 = 절반 속도).")]
+        [SerializeField] private float penaltySpeedRatio = 0.5f;
+        [Tooltip("감속 지속 시간 (초).")]
+        [SerializeField] private float penaltySlowDuration = 1.5f;
+        [Tooltip("무적/깜빡임 지속 시간 (초). 이 동안 같은 zone 재진입 + KnockDown 장애물 면역.")]
+        [SerializeField] private float invincibilityDuration = 1.5f;
+        [Tooltip("깜빡임 1회 on/off 주기 (초).")]
+        [SerializeField] private float blinkInterval = 0.1f;
 
         [Header("Gate Clearance")]
         [Tooltip("정문 통과 보장용 collider 여유 (m). 캐릭터 capsule radius보다 약간 크게. " +
@@ -46,6 +58,16 @@ namespace Seoul.Network.Game
                 _box = gameObject.AddComponent<BoxCollider>();
             _box.size   = new Vector3(thickness, height, 1f); // z는 LaneManager가 lane 폭으로 덮어씀
             _box.center = new Vector3(0f, height * 0.5f, 0f); // 지면(y=0) 위로 올림
+
+            // Penalty 모드 zone 부착 — 닿으면 감속+무적+깜빡임. lane change는 자유.
+            // ObstacleBase.KnockDown은 무적 타이머가 같은 OnTriggerEnter에서 면역시키므로 별도 disable 불필요.
+            if (!TryGetComponent<LaneRangeZone>(out var zone))
+                zone = gameObject.AddComponent<LaneRangeZone>();
+            zone.Mode = LaneRangeZone.BlockMode.Penalty;
+            zone.PenaltySpeedRatio = penaltySpeedRatio;
+            zone.PenaltySlowDuration = penaltySlowDuration;
+            zone.InvincibilityDuration = invincibilityDuration;
+            zone.BlinkInterval = blinkInterval;
 
             base.Awake();
         }

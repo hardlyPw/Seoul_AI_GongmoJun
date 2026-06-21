@@ -4,12 +4,13 @@ namespace Seoul.Network.Game
 {
     // 지하차도 기믹 (정적 배치, 멀티 동기화 없음).
     // - 씬에 prefab을 끌어다 놓기만 하면 시각/충돌이 자동 생성된다.
-    // - 인스펙터에서 holeLength/holeWidth/undergroundDepth 등을 바꾸면 에디터에서 즉시 갱신.
+    // - 인스펙터에서 holeLength/holeMinLane/holeMaxLane/undergroundDepth 등을 바꾸면 에디터에서 즉시 갱신.
     // - 동작 원리:
     //   * 도로 위에 검은 quad("구멍" 그림) + UndergroundHole trigger 얹음.
     //   * 캐릭터가 trigger에 진입하면 PlayerController가 ground 판정을 무시 → 추락.
     //   * 점프해서 trigger를 지나가면 _velocity.y가 살아있어 도로 반대편에 그대로 착지.
     //   * 떨어진 캐릭터는 지하 floor(별도 Ground collider)에 착지 후 출구 ramp로 다시 지상.
+    // - lane change: 통로/계단/exit ramp 전체에 LaneRangeZone → [holeMinLane, holeMaxLane]만 허용 (옆 lane으로 빠져 추락 방지).
     // - 자동 생성된 자식들은 HideFlags.DontSave → prefab/scene에 저장되지 않고 OnEnable 때마다 재생성.
     [ExecuteAlways]
     public class UndergroundGimmick : MonoBehaviour
@@ -17,8 +18,20 @@ namespace Seoul.Network.Game
         [Header("Hole (도로 위 구멍)")]
         [Tooltip("구멍의 진행 방향 길이(x). 점프로 건너야 하는 거리.")]
         [SerializeField] private float holeLength = 4f;
-        [Tooltip("구멍의 lane 방향 폭(z). lane 2~3 막을 거면 lane spacing × 2.")]
-        [SerializeField] private float holeWidth = 2f;
+        [Tooltip("구멍이 시작되는 lane (포함). 예: lane 2~3을 막으려면 2.")]
+        [SerializeField] private int holeMinLane = 2;
+        [Tooltip("구멍이 끝나는 lane (포함). 예: lane 2~3을 막으려면 3.")]
+        [SerializeField] private int holeMaxLane = 3;
+        [Tooltip("LaneManager가 없을 때(에디터 단독 편집 등)만 쓰는 폴백 폭(z). 런타임/씬에 LaneManager가 있으면 무시되고 lane 범위로 계산됨.")]
+        [SerializeField] private float fallbackHoleWidth = 2f;
+        [Tooltip("Rebuild 시 transform.position.z를 LaneManager의 lane 중심으로 자동 정렬할지. 기존 좌표를 유지하고 폭만 lane 기반으로 받고 싶으면 끄세요.")]
+        [SerializeField] private bool snapTransformToLaneCenter = true;
+
+        [Header("Lane Zone Behavior")]
+        [Tooltip("HardBlock = 범위 밖 lane change 차단. Penalty = lane change는 허용, 닿으면 감속+무적+깜빡임.")]
+        [SerializeField] private LaneRangeZone.BlockMode laneZoneMode = LaneRangeZone.BlockMode.HardBlock;
+        [Tooltip("도로 표면보다 이 값만큼 아래로 내려갔을 때부터 지하 lane 제한을 적용합니다.")]
+        [SerializeField] private float laneLimitActiveBelowSurface = 0.25f;
         [Tooltip("ground 무시 trigger의 높이(y). 점프 정점보다 커야 통과 중 ground=false 유지.")]
         [SerializeField] private float holeTriggerHeight = 3f;
         [Tooltip("trigger의 z 폭을 holeWidth보다 양쪽에서 이만큼 줄여, 옆 lane 캐릭터 capsule이 trigger에 침범해 잘못 추락하는 걸 방지. 캐릭터 radius보다 약간 크게.")]
@@ -44,6 +57,16 @@ namespace Seoul.Network.Game
         [Tooltip("hole 영역에만 지상 위로 세우는 가드 벽 높이(y). 옆에서 hole로 들어오려는 걸 시각적으로 막음. " +
                  "0 이하로 두면 가드 생성 안 함.")]
         [SerializeField] private float entranceGuardHeight = 1.5f;
+
+        [Header("Exit Guard (출구 ㄷ자 안전 벽)")]
+        [Tooltip("출구 ramp 끝에서 앞으로 이어지는 ㄷ자 안전 벽 길이(x).")]
+        [SerializeField] private float exitGuardLength = 4.5f;
+        [Tooltip("출구 ㄷ자 안전 벽 높이(y).")]
+        [SerializeField] private float exitGuardHeight = 1.5f;
+        [Tooltip("출구 ㄷ자 안전 벽 두께.")]
+        [SerializeField] private float exitGuardThickness = 0.2f;
+        [Tooltip("출구 ㄷ자 벽과 접근불가 trigger를 x축 기준으로 이동합니다. +면 진행 방향, -면 ramp 쪽입니다.")]
+        [SerializeField] private float exitGuardForwardOffset = -1.6f;
 
         [Header("Entrance Stairs (입구 계단 — 시각용)")]
         [Tooltip("입구 계단 단 개수. 0 이면 계단 안 만듦. 시각용이라 collider 없음 — 캐릭터는 그대로 추락.")]
@@ -114,6 +137,41 @@ namespace Seoul.Network.Game
                 groundLayer = 0;
             }
 
+            // Lane → z(중심/폭) 변환. 런타임이면 Instance, 에디터 편집 중이면 FindFirstObjectByType.
+            // LaneManager가 전혀 없으면 fallback 폭 사용 (transform.position.z는 건드리지 않음).
+            var lm = LaneManager.Instance;
+#if UNITY_EDITOR
+            if (lm == null) lm = FindFirstObjectByType<LaneManager>();
+#endif
+            float holeWidth;
+            // Wall/Visibility trigger가 hole 양옆에 추가로 덮을 폭(편측). LaneSpacing × 1 = 옆 lane 1칸.
+            float sideLaneMargin;
+            if (lm != null)
+            {
+                int minLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                int maxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                holeWidth = lm.GetLaneSpanZ(minLane, maxLane);
+                sideLaneMargin = lm.LaneSpacing;
+
+                if (snapTransformToLaneCenter)
+                {
+                    float centerZ = lm.GetLaneCenterZ(minLane, maxLane);
+                    if (!Mathf.Approximately(transform.position.z, centerZ))
+                    {
+                        var p = transform.position;
+                        p.z = centerZ;
+                        transform.position = p;
+                    }
+                }
+            }
+            else
+            {
+                holeWidth = fallbackHoleWidth;
+                sideLaneMargin = 1f;
+            }
+            // 양옆 합치면 lane 2칸 폭.
+            float sideMarginBoth = sideLaneMargin * 2f;
+
             // (Hole_Visual 제거 — 도로가 반투명화되면 hole 영역이 자연스럽게 보임)
 
             // 2) Hole Trigger (PlayerController가 감지)
@@ -128,34 +186,45 @@ namespace Seoul.Network.Game
             float triggerZ = Mathf.Max(0.1f, holeWidth - holeTriggerZClearance * 2f);
             triggerCol.size = new Vector3(holeLength, holeTriggerHeight, triggerZ);
 
-            // 2-2) Wall Trigger — hole 영역 + 양옆 1 lane 덮음.
-            //      이 trigger 안에서 lane change 시도 시 PlayerController가 fall + knockback.
-            //      정상 진행(입력 X)에는 영향 없으므로 capsule radius 겹침과 무관.
-            var wallGO = new GameObject("Wall_Trigger");
-            wallGO.transform.SetParent(container.transform, false);
-            wallGO.transform.localPosition = new Vector3(holeMidX, holeTriggerHeight * 0.5f, 0f);
-            wallGO.hideFlags = HideFlags.DontSave;
-            var wallCol = wallGO.AddComponent<BoxCollider>();
-            wallCol.isTrigger = true;
-            wallCol.size = new Vector3(holeLength, holeTriggerHeight, holeWidth + 2f); // 옆 lane 1칸씩 포함
-            wallGO.AddComponent<UndergroundWall>();
+            // 2-2) Lane Range Zone — 지하 통로 + 계단 + exit ramp 전체 덮음.
+            //      안에 있는 동안 lane change를 [holeMinLane, holeMaxLane]로 제한 (PlayerController.HandleLaneChange).
+            //      이미 범위 밖 lane에서 진입해도 안쪽으로 좁히는 변경은 허용 → 입구 정렬 보조.
+            //      계단 위/아래/지하 floor에서 옆 lane으로 빠져 추락하는 사고 방지.
+            if (lm != null)
+            {
+                var zoneGO = new GameObject("LaneRange_Trigger");
+                zoneGO.transform.SetParent(container.transform, false);
+                float zoneYCenter = (holeTriggerHeight - undergroundDepth - 0.5f) * 0.5f;
+                float zoneYSize   = holeTriggerHeight + undergroundDepth + 0.5f;
+                zoneGO.transform.localPosition = new Vector3(undergroundMidX, zoneYCenter, 0f);
+                zoneGO.hideFlags = HideFlags.DontSave;
+                var zoneCol = zoneGO.AddComponent<BoxCollider>();
+                zoneCol.isTrigger = true;
+                zoneCol.size = new Vector3(undergroundLength, zoneYSize, holeWidth + sideMarginBoth);
+                var zone = zoneGO.AddComponent<LaneRangeZone>();
+                int minLaneZ = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                int maxLaneZ = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                zone.MinLane = minLaneZ;
+                zone.MaxLane = maxLaneZ;
+                zone.Mode = laneZoneMode;
+                zone.UseMaxActiveWorldY = true;
+                zone.MaxActiveWorldY = transform.position.y - laneLimitActiveBelowSurface;
+            }
 
-            // 2-3) Visibility Trigger — 지상부터 지하 floor까지 큰 영역.
-            //      자기 카메라 캐릭터가 안에 있는 동안 벽/천장 자식 끄고, 자기 카메라 cullingMask에서 도로 layer 제거.
-            //      Wall_Trigger와 분리한 이유: Wall_Trigger Y는 지상만이라 지하 floor에 도달하면 빠져나가 시야가 다시 가려짐.
-            var visGO = new GameObject("Visibility_Trigger");
-            visGO.transform.SetParent(container.transform, false);
-            float visYCenter = (holeTriggerHeight - undergroundDepth - 0.5f) * 0.5f;
-            float visYSize   = holeTriggerHeight + undergroundDepth + 0.5f;
-            visGO.transform.localPosition = new Vector3(undergroundMidX, visYCenter, 0f);
-            visGO.hideFlags = HideFlags.DontSave;
-            var visCol = visGO.AddComponent<BoxCollider>();
-            visCol.isTrigger = true;
-            visCol.size = new Vector3(undergroundLength, visYSize, holeWidth + 2f);
-            var visZone = visGO.AddComponent<UndergroundVisibilityZone>();
-            visZone.SetExtraRenderers(extraHideRenderers);
-            visZone.SetExtraFadeMaterial(extraFadeMaterial);
-            triggerGO.AddComponent<UndergroundHole>();
+            // 2-3) (UndergroundVisibilityZone 제거됨)
+            //      투명화는 이제 PlayerController.UpdateCameraOcclusion이 카메라-플레이어 raycast로 처리.
+            //      지하 안 쓰는 플레이어 카메라에는 적용 안 됨 (도로가 카메라-플레이어 사이에 안 끼니까).
+            var holeMarker = triggerGO.AddComponent<UndergroundHole>();
+            if (lm != null)
+            {
+                holeMarker.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                holeMarker.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+            }
+            else
+            {
+                holeMarker.MinLane = holeMinLane;
+                holeMarker.MaxLane = holeMaxLane;
+            }
 
             // 3) 지하 floor (Ground 레이어, 추락한 캐릭터 착지)
             //    두께 1m — 입구 계단 마지막 단이 floor 안으로 살짝 들어가도 안 보이게.
@@ -198,6 +267,22 @@ namespace Seoul.Network.Game
                     groundLayer: -1);
             }
 
+            if (lm != null)
+            {
+                var entranceLockGO = new GameObject("Entrance_BoundaryLockZone");
+                entranceLockGO.transform.SetParent(container.transform, false);
+                entranceLockGO.transform.localPosition = new Vector3(holeMidX, holeTriggerHeight * 0.5f, 0f);
+                entranceLockGO.hideFlags = HideFlags.DontSave;
+                var entranceLockCol = entranceLockGO.AddComponent<BoxCollider>();
+                entranceLockCol.isTrigger = true;
+                entranceLockCol.size = new Vector3(holeLength, holeTriggerHeight, holeWidth + sideMarginBoth);
+                var entranceLock = entranceLockGO.AddComponent<LaneRangeZone>();
+                entranceLock.Mode = LaneRangeZone.BlockMode.BoundaryLock;
+                entranceLock.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                entranceLock.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                entranceLock.UseMaxActiveWorldY = false;
+            }
+
             // 5) 지하 천장 (도로 밑면 분위기 — 구멍 영역은 비움)
             float ceilingY = -0.3f;
             float frontLen = Mathf.Max(0f, holeStartX - undergroundStartX);
@@ -237,7 +322,7 @@ namespace Seoul.Network.Game
                 rampTriggerGO.hideFlags = HideFlags.DontSave;
                 var rampTriggerCol = rampTriggerGO.AddComponent<BoxCollider>();
                 rampTriggerCol.isTrigger = true;
-                rampTriggerCol.size = new Vector3(exitRampLength, undergroundDepth + 1.5f, holeWidth);
+                rampTriggerCol.size = new Vector3(exitRampLength, undergroundDepth + 1.5f, triggerZ);
                 var exitRamp = rampTriggerGO.AddComponent<UndergroundExitRamp>();
                 // 시작/끝 world 좌표 = prefab world position + local offset.
                 exitRamp.startWorld = new Vector2(
@@ -246,6 +331,83 @@ namespace Seoul.Network.Game
                 exitRamp.endWorld = new Vector2(
                     transform.position.x + rampStartX + exitRampLength,
                     transform.position.y + 0f);
+                if (lm != null)
+                {
+                    exitRamp.UseLaneRange = true;
+                    exitRamp.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                    exitRamp.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                }
+
+                // 6-2) 출구 safe zone — 다른 플레이어 차단용.
+                //      (a) BackWall: ramp top 직전(상류 -x)에 모든 lane을 가로지르는 얇은 trigger.
+                //          PlayerController가 _velocity.x를 클램프 → 외부 surface 플레이어는 더 못 감.
+                //      (b) NoEntry LaneRangeZone: ramp top 위 safe zone 영역. 밖→안 lane change 차단,
+                //          안에서의 이동은 자유 → 출구 플레이어가 안에서 좌우 정렬 가능.
+                float safeZoneLength = Mathf.Max(0.1f, exitGuardLength);
+                float safeZoneStartX = undergroundEndX + exitGuardForwardOffset;
+                float safeZoneMidX   = safeZoneStartX + safeZoneLength * 0.5f;
+                float safeWallThickness = Mathf.Max(0.05f, exitGuardThickness);
+                float safeWallWidthZ = holeWidth + safeWallThickness * 2f;
+                float backWallCenterX = safeZoneStartX - safeWallThickness * 0.5f;
+
+                // Exit guard visuals: ㄷ shape, open toward +x.
+                // The rear wall sits just behind the safe zone so the player can still run out forward.
+                if (exitGuardHeight > 0.01f)
+                {
+                    float guardY = exitGuardHeight * 0.5f;
+                    float sideZ = holeWidth * 0.5f + safeWallThickness * 0.5f;
+
+                    CreateCube(container.transform, "Exit_Guard_NegZ",
+                        center: new Vector3(safeZoneMidX, guardY, -sideZ),
+                        size:   new Vector3(safeZoneLength, exitGuardHeight, safeWallThickness),
+                        mat:    undergroundMaterial,
+                        groundLayer: -1);
+                    CreateCube(container.transform, "Exit_Guard_PosZ",
+                        center: new Vector3(safeZoneMidX, guardY, sideZ),
+                        size:   new Vector3(safeZoneLength, exitGuardHeight, safeWallThickness),
+                        mat:    undergroundMaterial,
+                        groundLayer: -1);
+                    CreateCube(container.transform, "Exit_Guard_Back",
+                        center: new Vector3(backWallCenterX, guardY, 0f),
+                        size:   new Vector3(safeWallThickness, exitGuardHeight, safeWallWidthZ),
+                        mat:    undergroundMaterial,
+                        groundLayer: -1);
+                }
+
+                // BackWall — visible back wall과 같은 위치/폭의 접근 불가 trigger.
+                // 출구 lane만 막으므로 지상 플레이어는 W/S로 옆 lane에 빠져 앞으로 계속 갈 수 있다.
+                var backWallGO = new GameObject("Exit_BackWall");
+                backWallGO.transform.SetParent(container.transform, false);
+                backWallGO.transform.localPosition = new Vector3(backWallCenterX, holeTriggerHeight * 0.5f, 0f);
+                backWallGO.hideFlags = HideFlags.DontSave;
+                var bwCol = backWallGO.AddComponent<BoxCollider>();
+                bwCol.isTrigger = true;
+                bwCol.size = new Vector3(safeWallThickness, holeTriggerHeight, safeWallWidthZ);
+                var backWall = backWallGO.AddComponent<BackWall>();
+                backWall.UseMaxActiveWorldY = false;
+                if (lm != null)
+                {
+                    backWall.UseLaneRange = true;
+                    backWall.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                    backWall.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                }
+
+                // NoEntry side zone — safe zone 영역에서 밖 lane → 출구 lane 진입 차단.
+                if (lm != null)
+                {
+                    var noEntryGO = new GameObject("Exit_NoEntryZone");
+                    noEntryGO.transform.SetParent(container.transform, false);
+                    noEntryGO.transform.localPosition = new Vector3(safeZoneMidX, holeTriggerHeight * 0.5f, 0f);
+                    noEntryGO.hideFlags = HideFlags.DontSave;
+                    var neCol = noEntryGO.AddComponent<BoxCollider>();
+                    neCol.isTrigger = true;
+                    neCol.size = new Vector3(safeZoneLength, holeTriggerHeight, holeWidth + sideMarginBoth);
+                    var neZone = noEntryGO.AddComponent<LaneRangeZone>();
+                    neZone.Mode = LaneRangeZone.BlockMode.BoundaryLock;
+                    neZone.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                    neZone.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                    neZone.UseMaxActiveWorldY = false;
+                }
             }
 
             // 7-pre) 입구 ramp snap trigger — 계단 표면 따라 캐릭터가 부드럽게 내려가게.
@@ -259,10 +421,16 @@ namespace Seoul.Network.Game
                 entRampGO.hideFlags = HideFlags.DontSave;
                 var entRampCol = entRampGO.AddComponent<BoxCollider>();
                 entRampCol.isTrigger = true;
-                entRampCol.size = new Vector3(holeLength, undergroundDepth + 1.5f, holeWidth);
+                entRampCol.size = new Vector3(holeLength, undergroundDepth + 1.5f, triggerZ);
                 var entRamp = entRampGO.AddComponent<UndergroundExitRamp>();
                 entRamp.startWorld = new Vector2(transform.position.x + holeStartX, transform.position.y + 0f);
                 entRamp.endWorld   = new Vector2(transform.position.x + holeEndX,   transform.position.y - undergroundDepth);
+                if (lm != null)
+                {
+                    entRamp.UseLaneRange = true;
+                    entRamp.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                    entRamp.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                }
             }
 
             // 7) 입구 계단 (블록 여러 개) — 시각용, collider 없음.
@@ -305,10 +473,9 @@ namespace Seoul.Network.Game
             }
             else if (go.TryGetComponent<Collider>(out var col))
             {
-                // Destroy()는 다음 프레임 효력 → 그 사이 충돌 발생 시 캐릭터 막힘.
-                // enabled=false로 즉시 충돌 무효화 후 destroy.
-                col.enabled = false;
-                DestroySafe(col);
+                // 시각 only geometry도 카메라 occlusion raycast에는 잡혀야 한다.
+                // trigger collider로 남겨 물리 이동은 막지 않되 투명화 대상 검출에만 사용한다.
+                col.isTrigger = true;
             }
 
             ApplyMat(go, mat);

@@ -5,7 +5,7 @@ namespace Seoul.Network.Game
     // 육교 기믹 (정적 배치, 멀티 동기화 없음).
     // - 구성: 입구 계단 → 다리 위 평평한 길 → 출구 계단.
     // - 계단은 시각용 cube. 캐릭터 y는 UndergroundExitRamp(재사용) snap으로 보정.
-    // - 다리 + 계단 전체 영역에 UndergroundWall trigger → 옆으로 떨어지는 lane change 차단.
+    // - lane change: 다리 평평한 구간 위에선 LaneRangeZone으로 [bridgeMinLane, bridgeMaxLane]만 허용. 계단/도로선 자유.
     // - 진행 흐름 (캐릭터 +x):
     //     도로 → 입구 ramp snap trigger → 자동 y 올라감 → 다리 위 (Bridge_Floor, ground layer) →
     //     출구 ramp snap trigger → 자동 y 내려감 → 도로
@@ -17,8 +17,18 @@ namespace Seoul.Network.Game
         [SerializeField] private float bridgeLength = 12f;
         [Tooltip("도로 표면에서 다리 위까지 높이(y).")]
         [SerializeField] private float bridgeHeight = 3f;
-        [Tooltip("다리/계단 z 폭. 보통 lane 1~2개 폭.")]
-        [SerializeField] private float bridgeWidth  = 2f;
+        [Tooltip("다리가 시작되는 lane (포함). 예: lane 2~3을 덮으려면 2.")]
+        [SerializeField] private int bridgeMinLane = 2;
+        [Tooltip("다리가 끝나는 lane (포함). 예: lane 2~3을 덮으려면 3.")]
+        [SerializeField] private int bridgeMaxLane = 3;
+        [Tooltip("LaneManager가 없을 때(에디터 단독 편집 등)만 쓰는 폴백 폭(z). 런타임/씬에 LaneManager가 있으면 무시되고 lane 범위로 계산됨.")]
+        [SerializeField] private float fallbackBridgeWidth = 2f;
+        [Tooltip("Rebuild 시 transform.position.z를 LaneManager의 lane 중심으로 자동 정렬할지. 기존 좌표 유지하고 폭만 lane 기반으로 받고 싶으면 끄세요.")]
+        [SerializeField] private bool snapTransformToLaneCenter = true;
+
+        [Header("Lane Zone Behavior")]
+        [Tooltip("HardBlock = 범위 밖 lane change 차단. Penalty = lane change는 허용, 닿으면 감속+무적+깜빡임.")]
+        [SerializeField] private LaneRangeZone.BlockMode laneZoneMode = LaneRangeZone.BlockMode.HardBlock;
 
         [Header("Stairs (입구 + 출구 계단)")]
         [Tooltip("각 계단의 x 길이.")]
@@ -74,6 +84,40 @@ namespace Seoul.Network.Game
                 groundLayer = 0;
             }
 
+            // Lane → z(중심/폭) 변환. 런타임이면 Instance, 에디터 편집 중이면 FindFirstObjectByType.
+            // LaneManager가 전혀 없으면 fallback 폭 사용 (transform.position.z는 건드리지 않음).
+            var lm = LaneManager.Instance;
+#if UNITY_EDITOR
+            if (lm == null) lm = FindFirstObjectByType<LaneManager>();
+#endif
+            float bridgeWidth;
+            // LaneLock_Trigger가 다리 양옆에 추가로 덮을 폭(편측). LaneSpacing × 1 = 옆 lane 1칸.
+            float sideLaneMargin;
+            if (lm != null)
+            {
+                int minLane = Mathf.Clamp(Mathf.Min(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
+                int maxLane = Mathf.Clamp(Mathf.Max(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
+                bridgeWidth = lm.GetLaneSpanZ(minLane, maxLane);
+                sideLaneMargin = lm.LaneSpacing;
+
+                if (snapTransformToLaneCenter)
+                {
+                    float centerZ = lm.GetLaneCenterZ(minLane, maxLane);
+                    if (!Mathf.Approximately(transform.position.z, centerZ))
+                    {
+                        var p = transform.position;
+                        p.z = centerZ;
+                        transform.position = p;
+                    }
+                }
+            }
+            else
+            {
+                bridgeWidth = fallbackBridgeWidth;
+                sideLaneMargin = 1f;
+            }
+            float sideMarginBoth = sideLaneMargin * 2f;
+
             // 좌표 기준: local origin = 입구 계단 시작점, 도로 표면(y=0).
             float entranceStartX = 0f;
             float entranceEndX   = stairLength;
@@ -87,7 +131,8 @@ namespace Seoul.Network.Game
             // 1) 입구 계단 (시각용)
             BuildStairs(container.transform, "Entrance_Stair",
                 xStart: entranceStartX,
-                yStart: 0f, yEnd: bridgeHeight);
+                yStart: 0f, yEnd: bridgeHeight,
+                widthZ: bridgeWidth);
 
             // 2) 다리 위 평평한 길 (ground layer)
             //    두께 0.2m — 1m면 캐릭터가 cube 안에 박힐 때 SphereCast 결과가 부정확해져 끼는 현상 발생.
@@ -101,7 +146,8 @@ namespace Seoul.Network.Game
             // 3) 출구 계단 (시각용, y 반전)
             BuildStairs(container.transform, "Exit_Stair",
                 xStart: exitStartX,
-                yStart: bridgeHeight, yEnd: 0f);
+                yStart: bridgeHeight, yEnd: 0f,
+                widthZ: bridgeWidth);
 
             // 4) 다리 위 좌우 가드레일 — 다리 평평한 구간에만 (계단 영역엔 적용 안 함).
             //    Lane lock은 별도 trigger가 전체 영역 처리.
@@ -120,37 +166,44 @@ namespace Seoul.Network.Game
                     groundLayer: -1);
             }
 
-            // 5) Lane Lock Trigger (육교 전체) — UndergroundWall 재사용.
-            //    PlayerController가 _underWallOverlap > 0 일 때 lane change 차단.
+            // 5) Lane Range Zone — 다리 평평한 구간 위에서만 lane change를 다리 lane 범위로 제한.
+            //    계단은 포함 안 함 → 계단 위/아래선 자유 (계단 오를 때 lane 정렬 가능).
+            //    이미 범위 밖 lane에서 진입해도 안쪽으로 좁히는 변경은 허용 (PlayerController.HandleLaneChange 참조).
+            if (lm != null)
             {
-                var lockGO = new GameObject("LaneLock_Trigger");
-                lockGO.transform.SetParent(container.transform, false);
-                lockGO.transform.localPosition = new Vector3(totalCenterX, bridgeHeight + bridgeWallHeight * 0.5f, 0f);
-                lockGO.hideFlags = HideFlags.DontSave;
-                var lockCol = lockGO.AddComponent<BoxCollider>();
-                lockCol.isTrigger = true;
-                lockCol.size = new Vector3(totalLength, bridgeWallHeight + 2f, bridgeWidth + 2f);
-                lockGO.AddComponent<UndergroundWall>();
+                var zoneGO = new GameObject("Bridge_LaneRangeZone");
+                zoneGO.transform.SetParent(container.transform, false);
+                zoneGO.transform.localPosition = new Vector3(bridgeCenterX, bridgeHeight + bridgeWallHeight * 0.5f, 0f);
+                zoneGO.hideFlags = HideFlags.DontSave;
+                var zoneCol = zoneGO.AddComponent<BoxCollider>();
+                zoneCol.isTrigger = true;
+                zoneCol.size = new Vector3(bridgeLength, bridgeWallHeight + 2f, bridgeWidth + sideMarginBoth);
+                var zone = zoneGO.AddComponent<LaneRangeZone>();
+                zone.MinLane = Mathf.Clamp(Mathf.Min(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
+                zone.MaxLane = Mathf.Clamp(Mathf.Max(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
+                zone.Mode = laneZoneMode;
             }
 
             // 6) 입구 ramp snap trigger (UndergroundExitRamp 재사용, start=낮 end=높)
             BuildRampTrigger("Entrance_RampTrigger",
                 container: container.transform,
                 xStart: entranceStartX, xEnd: entranceEndX,
-                startY: 0f, endY: bridgeHeight);
+                startY: 0f, endY: bridgeHeight,
+                widthZ: bridgeWidth);
 
             // 7) 출구 ramp snap trigger (start=높 end=낮)
             BuildRampTrigger("Exit_RampTrigger",
                 container: container.transform,
                 xStart: exitStartX, xEnd: exitEndX,
-                startY: bridgeHeight, endY: 0f);
+                startY: bridgeHeight, endY: 0f,
+                widthZ: bridgeWidth);
         }
 
         // 계단 N개 cube 생성. 시각용(collider 없음).
         // 각 단의 bottom은 도로 표면(min(yStart, yEnd))까지 꽉 채움 → 옆에서 보면 진짜 계단 모양.
         // 두께 0인 단(예: 출구 마지막 단)은 건너뜀.
         private void BuildStairs(Transform parent, string namePrefix,
-            float xStart, float yStart, float yEnd)
+            float xStart, float yStart, float yEnd, float widthZ)
         {
             if (stairCount <= 0) return;
             float stepX = stairLength / stairCount;
@@ -165,7 +218,7 @@ namespace Seoul.Network.Game
                 float centerY = (topY + baseY) * 0.5f;
                 CreateCube(parent, $"{namePrefix}_{i}",
                     center: new Vector3(centerX, centerY, 0f),
-                    size:   new Vector3(stepX, thickness, bridgeWidth),
+                    size:   new Vector3(stepX, thickness, widthZ),
                     mat:    stairsMaterial,
                     groundLayer: -1);
             }
@@ -174,7 +227,7 @@ namespace Seoul.Network.Game
         // Ramp snap trigger (UndergroundExitRamp) 생성.
         // PlayerController가 trigger 안일 때 캐릭터 y를 SurfaceYAt(x)로 자동 보정.
         private void BuildRampTrigger(string n, Transform container,
-            float xStart, float xEnd, float startY, float endY)
+            float xStart, float xEnd, float startY, float endY, float widthZ)
         {
             var go = new GameObject(n);
             go.transform.SetParent(container, false);
@@ -184,7 +237,7 @@ namespace Seoul.Network.Game
             go.hideFlags = HideFlags.DontSave;
             var col = go.AddComponent<BoxCollider>();
             col.isTrigger = true;
-            col.size = new Vector3(xEnd - xStart, (highY - lowY) + 2f, bridgeWidth);
+            col.size = new Vector3(xEnd - xStart, (highY - lowY) + 2f, widthZ);
             var ramp = go.AddComponent<UndergroundExitRamp>();
             ramp.startWorld = new Vector2(transform.position.x + xStart, transform.position.y + startY);
             ramp.endWorld   = new Vector2(transform.position.x + xEnd,   transform.position.y + endY);
@@ -203,10 +256,9 @@ namespace Seoul.Network.Game
             }
             else if (go.TryGetComponent<Collider>(out var c))
             {
-                // 시각 only — Destroy()는 다음 프레임 효력이라 그 사이 충돌 발생 → 캐릭터 막힘.
-                // 즉시 enabled=false로 충돌 무효화 후 destroy.
-                c.enabled = false;
-                DestroySafe(c);
+                // 시각 only geometry도 카메라 occlusion raycast에는 잡혀야 한다.
+                // trigger collider로 남겨 물리 이동은 막지 않되 투명화 대상 검출에만 사용한다.
+                c.isTrigger = true;
             }
             if (mat != null && go.TryGetComponent<MeshRenderer>(out var mr)) mr.sharedMaterial = mat;
             go.hideFlags = HideFlags.DontSave;

@@ -56,6 +56,22 @@ namespace Seoul.Network.Game
         private float _spectatePollTimer = 0f;
         private const float SpectatePollInterval = 0.5f;
 
+        private Coroutine _startCoroutine;
+
+        // 중간 관전 상태 (현재 스테이지 골인 후, 서버 전환 신호 대기 중)
+        private bool _isIntermediateSpectating = false;
+        private float _intermediatePollTimer = 0f;
+
+        // 스테이지 진입 시 모든 플레이어 준비 완료 신호를 기다리는 동안 입력을 차단하는 플래그.
+        // LoadNextStageClientRpc 또는 OnNetworkSpawn으로 true, EnableStageInputClientRpc 또는 EnableInputDirect로 false.
+        // ⚠️ static: 같은 클라이언트의 모든 NetworkPlayer 인스턴스가 공유.
+        //    (LoadNextStageClientRpc는 특정 인스턴스에서fb8호스되지만, 플래그는 클라이언트 전체에 적용되어야 함)
+        private static bool _waitingForStageStart = false;
+
+        // [서버 전용] 현 스테이지에서 준비 완료 신호를 보낸 클라이언트 ID 집합.
+        // static으로 모든 NetworkPlayer 인스턴스가 공유 (서버에 하나만 존재).
+        private static readonly HashSet<ulong> _stageReadyClients = new();
+
         public void MarkFinished(int rank)
         {
             if (!IsServer) return;
@@ -64,7 +80,7 @@ namespace Seoul.Network.Game
         }
 
         [ServerRpc(RequireOwnership = false)]
-        public void ReportGoalServerRpc(ServerRpcParams rpcParams = default)
+        public void ReportGoalServerRpc(FixedString64Bytes nextScene, ServerRpcParams rpcParams = default)
         {
             ulong senderId = rpcParams.Receive.SenderClientId;
             if (senderId != OwnerClientId)
@@ -95,13 +111,19 @@ namespace Seoul.Network.Game
 
             if (CurrentScene.Value.ToString() == FinalStageName)
             {
+                // 최종 스테이지 골인 — IsFullyFinished 처리 후 결과 화면으로
                 IsFullyFinished.Value = true;
                 TryAdvanceToResult();
+            }
+            else
+            {
+                // 중간 스테이지 골인 — 현재 씬 전체 플레이어 골인 시 ClientRpc로 일괄 전환
+                TryAdvanceToNextStage(nextScene.ToString());
             }
         }
 
         private static void TryAdvanceToResult()
-{
+        {
             if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer) return;
             if (All.Count == 0) return;
             foreach (var p in All)
@@ -148,6 +170,50 @@ namespace Seoul.Network.Game
             NetworkManager.Singleton.SceneManager.LoadScene(ResultSceneName, LoadSceneMode.Single);
         }
 
+        /// <summary>
+        /// 중간 스테이지 전환: 현재 씬의 모든 활성 플레이어가 골인했으면
+        /// 모든 클라이언트에 ClientRpc로 다음 씬 로드 신호를 보냅니다.
+        /// </summary>
+        private void TryAdvanceToNextStage(string nextScene)
+        {
+            if (!IsServer) return;
+            if (string.IsNullOrEmpty(nextScene)) return;
+
+            string myScene = CurrentScene.Value.ToString();
+
+            // 현재 씬에서 플레이 중인 모든 플레이어(관전자 제외)가 골인했는지 확인
+            foreach (var p in All)
+            {
+                if (p == null) continue;
+                if (p.IsFullyFinished.Value) continue;  // 최종 완료 관전자는 제외
+                if (p.CurrentScene.Value.ToString() != myScene) continue;
+                if (!p.HasFinished.Value) return;       // 아직 골인 못 한 플레이어 존재
+            }
+
+            Debug.Log($"[NetworkPlayer] All players finished '{myScene}' → loading '{nextScene}'");
+            LoadNextStageClientRpc(new FixedString64Bytes(nextScene));
+        }
+
+        /// <summary>
+        /// 모든 클라이언트에서 다음 스테이지를 로컬 로드합니다.
+        /// SceneTransition의 페이드 처리가 자동으로 이루어집니다.
+        /// </summary>
+        [ClientRpc]
+        private void LoadNextStageClientRpc(FixedString64Bytes nextScene)
+        {
+            Debug.Log($"[NetworkPlayer] LoadNextStageClientRpc — loading '{nextScene}'");
+            if (IsServer) _stageReadyClients.Clear();
+            _waitingForStageStart = true;
+            StopLocalMovementForStageWait();
+            
+            // 모든 클라이언트가 로딩을 마칠 때까지 화면이 까만 상태로 대기하도록 설정
+            if (SceneTransition.Instance != null)
+            {
+                SceneTransition.Instance.ManualFadeIn = true;
+            }
+            SceneTransition.Load(nextScene.ToString());
+        }
+
         [ServerRpc(RequireOwnership = false)]
         public void RequestStageResetServerRpc(ServerRpcParams rpcParams = default)
         {
@@ -155,6 +221,85 @@ namespace Seoul.Network.Game
             if (IsFullyFinished.Value) return; // 스펙테이터는 리셋하지 않음
             HasFinished.Value = false;
             FinishRank.Value = 0;
+        }
+
+        /// <summary>
+        /// 스테이지 2/3 전환 시 LocalStageEntry가 호출.
+        /// HasFinished 리셋 후 준비 완료를 서버에 통보하며,
+        /// 모든 플레이어가 준비되면 서버가 EnableStageInputClientRpc를 일괄 발송합니다.
+        /// </summary>
+        [ServerRpc(RequireOwnership = false)]
+        public void RequestReadyServerRpc(ServerRpcParams rpcParams = default)
+        {
+            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+            if (IsFullyFinished.Value) return; // 스펙테이터는 참여하지 않음
+
+            // HasFinished / FinishRank 리셋 (RequestStageResetServerRpc와 동일)
+            HasFinished.Value = false;
+            FinishRank.Value = 0;
+
+            _stageReadyClients.Add(OwnerClientId);
+            Debug.Log($"[NetworkPlayer] Client {OwnerClientId} ready for next stage. ({_stageReadyClients.Count} total)");
+
+            TryBroadcastStageStart();
+        }
+
+        /// <summary>
+        /// 모든 활성 플레이어가 준비됐으면 EnableStageInputClientRpc를 전송합니다.
+        /// </summary>
+        private void TryBroadcastStageStart()
+        {
+            if (!IsServer) return;
+
+            // 관전자(IsFullyFinished)를 제외한 모든 플레이어가 준비됐는지 확인
+            foreach (var p in All)
+            {
+                if (p == null) continue;
+                if (p.IsFullyFinished.Value) continue;
+                if (!_stageReadyClients.Contains(p.OwnerClientId)) return; // 아직 준비 안 됨
+            }
+
+            Debug.Log("[NetworkPlayer] All players ready — broadcasting stage start.");
+            _stageReadyClients.Clear();
+            
+            // 네트워크 지연을 극복하기 위해 정확히 0.5초 뒤의 서버 시간을 동시 출발 시간으로 지정합니다.
+            double exactStartTime = NetworkManager.Singleton.ServerTime.Time + 0.5;
+            
+            // ⚠️ this.EnableStageInputClientRpc() 가 아니라 각 NetworkPlayer 인스턴스에서 호출.
+            foreach (var p in All)
+            {
+                if (p != null) p.ScheduleExactStartClientRpc(exactStartTime);
+            }
+        }
+
+        [ClientRpc]
+        public void ScheduleExactStartClientRpc(double exactStartTime)
+        {
+            if (!IsOwner) return;
+            if (IsFullyFinished.Value) return;
+
+            Debug.Log($"[NetworkPlayer] Stage start scheduled at ServerTime: {exactStartTime}");
+            StartCoroutine(ExactStartRoutine(exactStartTime));
+        }
+
+        private System.Collections.IEnumerator ExactStartRoutine(double exactStartTime)
+        {
+            // 완벽한 동시 출발을 위해 서버 시간이 일치할 때까지 대기합니다.
+            while (NetworkManager.Singleton.ServerTime.Time < exactStartTime)
+            {
+                yield return null;
+            }
+
+            _waitingForStageStart = false;
+            
+            if (SceneTransition.Instance != null && SceneTransition.Instance.ManualFadeIn)
+            {
+                SceneTransition.Instance.TriggerFadeIn();
+            }
+            
+            Debug.Log($"[NetworkPlayer] PERFECT SYNC START at ServerTime: {NetworkManager.Singleton.ServerTime.Time}");
+            controller.SetMovementLocked(false);
+            RefreshInputForLocalState();
         }
 
         [ServerRpc(RequireOwnership = false)]
@@ -166,6 +311,35 @@ namespace Seoul.Network.Game
 
 
         // ─── 로컬 로드 씬용 아이템 소비 동기화 ─────────────────
+
+        /// <summary>
+        /// NetworkRaceManager.ForceStartRaceClientRpc에서 호출.
+        /// 지정된 지연 시간(delay)에 맞춰 직접 입력을 활성화합니다.
+        /// </summary>
+        public void ScheduleInputEnable(float delay)
+        {
+            if (!IsOwner) return;
+            if (IsFullyFinished.Value || HasFinished.Value) return;
+
+            if (_startCoroutine != null) StopCoroutine(_startCoroutine);
+            StopLocalMovementForStageWait();
+            _startCoroutine = StartCoroutine(WaitAndEnableInput(delay));
+        }
+
+        private System.Collections.IEnumerator WaitAndEnableInput(float delay)
+        {
+            if (delay > 0f)
+            {
+                // 로컬 클럭(Time.time)을 사용하여 오차 없이 매끄럽게 대기합니다.
+                yield return new WaitForSeconds(delay);
+            }
+
+            // static 플래그 해제 (서버-클라이언트 동시 시작을 위한 차단 해제)
+            _waitingForStageStart = false;
+            Debug.Log($"[NetworkPlayer] Stage start synchronized exact time reached (delay: {delay}) — enabling input.");
+            controller.SetMovementLocked(false);
+            controller.Initialize(new PlayerInputProvider());
+        }
 
         [ServerRpc(RequireOwnership = false)]
         public void ReportConsumedItemServerRpc(FixedString64Bytes sceneName, FixedString64Bytes itemId, ServerRpcParams rpcParams = default)
@@ -234,6 +408,7 @@ namespace Seoul.Network.Game
             if (IsOwner)
             {
                 controller.Initialize(new NullInputProvider());
+                controller.ResetMovementState();
                 if (ownerVisualMarker != null) ownerVisualMarker.SetActive(true);
                 if (attachCameraOnSpawn) AttachCameraTo(transform);
                 ReportActiveSceneToServer();
@@ -254,6 +429,11 @@ namespace Seoul.Network.Game
             CurrentScene.OnValueChanged += OnCurrentSceneChanged;
             IsFullyFinished.OnValueChanged += OnIsFullyFinishedChanged;
             SceneManager.sceneLoaded += OnSceneLoadedLocal;
+
+            // 스테이지 시작 신호(ForceStartRaceClientRpc 또는 EnableStageInputClientRpc)를
+            // 받기 전까지 입력을 차단. 서버가 State=Racing으로 먼저 시작하는 것을 방지.
+            _waitingForStageStart = true;
+            StopLocalMovementForStageWait();
 
             RefreshInputForLocalState();
             RefreshAllVisibility();
@@ -280,11 +460,27 @@ namespace Seoul.Network.Game
 
         private void Update()
         {
-            if (!_isSpectating || !IsOwner) return;
-            _spectatePollTimer -= Time.deltaTime;
-            if (_spectatePollTimer > 0f) return;
-            _spectatePollTimer = SpectatePollInterval;
-            UpdateSpectateTarget();
+            if (!IsOwner) return;
+
+            if (_isSpectating)
+            {
+                _spectatePollTimer -= Time.deltaTime;
+                if (_spectatePollTimer <= 0f)
+                {
+                    _spectatePollTimer = SpectatePollInterval;
+                    UpdateSpectateTarget();
+                }
+            }
+
+            if (_isIntermediateSpectating)
+            {
+                _intermediatePollTimer -= Time.deltaTime;
+                if (_intermediatePollTimer <= 0f)
+                {
+                    _intermediatePollTimer = SpectatePollInterval;
+                    UpdateIntermediateSpectateTarget();
+                }
+            }
         }
 
         private void OnSceneLoadedLocal(Scene scene, LoadSceneMode mode)
@@ -298,9 +494,14 @@ namespace Seoul.Network.Game
                     // 새 씬 로드 직후 잠시 기다렸다가 스펙테이트 갱신
                     _spectatePollTimer = 0.2f;
                 }
-                else if (attachCameraOnSpawn)
+                else
                 {
-                    AttachCameraTo(transform);
+                    // 새 씬이 로드되면 중간 관전을 즉시 해제하고 카메라를 자신에게 복귀
+                    // (LocalStageEntry가 HasFinished를 reset하기 전에 해제하기 위해 여기서도 처리)
+                    if (_isIntermediateSpectating)
+                        ExitIntermediateSpectateMode();
+                    else if (attachCameraOnSpawn)
+                        AttachCameraTo(transform);
                 }
             }
 
@@ -325,7 +526,14 @@ namespace Seoul.Network.Game
             => RefreshInputForLocalState();
 
         private void OnHasFinishedChanged(bool previous, bool current)
-            => RefreshInputForLocalState();
+        {
+            RefreshInputForLocalState();
+            if (!IsOwner) return;
+            if (current && !IsFullyFinished.Value)
+                EnterIntermediateSpectateMode();  // 중간 스테이지 골인 → 관전 시작
+            else if (!current)
+                ExitIntermediateSpectateMode();   // 새 스테이지 시작(HasFinished 리셋) → 관전 해제
+        }
 
         private void OnCurrentSceneChanged(FixedString64Bytes previous, FixedString64Bytes current)
         {
@@ -350,6 +558,47 @@ namespace Seoul.Network.Game
             {
                 EnterSpectateMode();
             }
+        }
+
+        // ─── 중간 관전 (스테이지 골인 후 대기) ───────────────────
+
+        private void EnterIntermediateSpectateMode()
+        {
+            if (_isIntermediateSpectating) return;
+            _isIntermediateSpectating = true;
+            _intermediatePollTimer = 0f;
+            Debug.Log("[NetworkPlayer] Entering intermediate spectate mode.");
+            UpdateIntermediateSpectateTarget();
+        }
+
+        private void ExitIntermediateSpectateMode()
+        {
+            if (!_isIntermediateSpectating) return;
+            _isIntermediateSpectating = false;
+            Debug.Log("[NetworkPlayer] Exiting intermediate spectate mode.");
+            if (attachCameraOnSpawn) AttachCameraTo(transform);
+        }
+
+        private void UpdateIntermediateSpectateTarget()
+        {
+            string myScene = SceneManager.GetActiveScene().name;
+            NetworkPlayer target = null;
+            foreach (var p in All)
+            {
+                if (p == null || p == this) continue;
+                if (p.IsFullyFinished.Value) continue;
+                if (p.CurrentScene.Value.ToString() != myScene) continue;
+                if (p.HasFinished.Value) continue;  // 이미 골인한 플레이어는 건너뜀
+                target = p;
+                break;
+            }
+
+            if (target != null)
+            {
+                Debug.Log($"[NetworkPlayer] Intermediate spectating clientId={target.OwnerClientId}");
+                AttachCameraTo(target.transform);
+            }
+            // target이 없으면 카메라 유지 (곧 씬 전환 예정)
         }
 
         // ─── 스펙테이트 ────────────────────────────────────────
@@ -410,6 +659,7 @@ namespace Seoul.Network.Game
             if (IsFullyFinished.Value)
             {
                 controller.Initialize(new NullInputProvider());
+                controller.SetMovementLocked(true);
                 return;
             }
 
@@ -417,10 +667,52 @@ namespace Seoul.Network.Game
                                    || !NetworkRaceManager.Instance.IsSpawned
                                    || NetworkRaceManager.Instance.State.Value == RaceState.Racing;
 
-            if (racingOrFreeRun && !HasFinished.Value)
-                controller.Initialize(new PlayerInputProvider());
-            else
+            // 대기 중이면 입력 차단 (이제 ExactStartRoutine에서 대기 플래그를 해제합니다)
+            if (_waitingForStageStart)
+            {
                 controller.Initialize(new NullInputProvider());
+                controller.SetMovementLocked(true);
+                return;
+            }
+
+            if (racingOrFreeRun && !HasFinished.Value)
+            {
+                controller.SetMovementLocked(false);
+                controller.Initialize(new PlayerInputProvider());
+                // 개발자님의 로컬 환경(듀얼 모니터) 완벽 동시 출발 시각 효과를 위해
+                // 출발 직후 1초간 모든 NetworkTransform의 보간(버퍼)을 강제로 꺼서 즉시 반응하게 만듭니다.
+                StartCoroutine(TemporaryDisableInterpolationRoutine());
+            }
+            else
+            {
+                controller.Initialize(new NullInputProvider());
+                controller.SetMovementLocked(true);
+            }
+        }
+
+        private void StopLocalMovementForStageWait()
+        {
+            if (!IsOwner || controller == null) return;
+            controller.Initialize(new NullInputProvider());
+            controller.SetMovementLocked(true);
+        }
+
+        private System.Collections.IEnumerator TemporaryDisableInterpolationRoutine()
+        {
+            // 모든 플레이어의 NetworkTransform 보간을 끕니다. (100ms 지연 제거)
+            var netTransforms = FindObjectsOfType<Unity.Netcode.Components.NetworkTransform>();
+            foreach (var nt in netTransforms)
+            {
+                nt.Interpolate = false;
+            }
+
+            // 1초 뒤에 다시 부드러운 움직임(보간)을 켭니다.
+            yield return new WaitForSeconds(1.0f);
+
+            foreach (var nt in netTransforms)
+            {
+                if (nt != null) nt.Interpolate = true;
+            }
         }
 
         private void RefreshAllVisibility()

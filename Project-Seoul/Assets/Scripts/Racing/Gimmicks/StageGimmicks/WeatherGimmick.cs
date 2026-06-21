@@ -42,6 +42,7 @@ namespace Seoul.Network.Game
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
+            WeatherModifiers.Clear();
         }
 
         public override void OnNetworkSpawn()
@@ -64,6 +65,7 @@ namespace Seoul.Network.Game
         {
             Current.OnValueChanged -= OnWeatherChanged;
             if (_itemBoxLanes != null) _itemBoxLanes.OnListChanged -= OnItemBoxLanesChanged;
+            WeatherModifiers.Clear();
         }
 
         private WeatherType PickWeather()

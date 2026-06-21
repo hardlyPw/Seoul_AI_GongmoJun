@@ -1,4 +1,4 @@
-﻿using Seoul.Network.Game;
+using Seoul.Network.Game;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
@@ -6,6 +6,7 @@ using UnityEngine.SceneManagement;
 public class PlayerAirborneState : IPlayerState
 {
     private float _airTimer;
+    private float _entrySpeed;  // 점프대 진입 시 플레이어의 전진 속도
     private int _qteSuccessCount;
     private readonly Key[] _qteKeys = { Key.W, Key.A, Key.S, Key.D };
     private Key _currentRequiredKey;
@@ -14,6 +15,8 @@ public class PlayerAirborneState : IPlayerState
     {
         _airTimer = 3f; // 기획 규격인 총 체공 시간 3초 고정
         _qteSuccessCount = 0;
+        // 점프대 진입 시 현재 전진 속도를 캡처 (최소 WalkSpeed 보장)
+        _entrySpeed = Mathf.Max(player.CurrentSpeedX, player.WalkSpeed);
         GenerateNextQTEKey();
 
         // 초기 도약 시점에 강력한 Y축 상승 속도를 인젝션하여 고고도 점프를 강제 발동시킵니다.
@@ -67,8 +70,8 @@ public class PlayerAirborneState : IPlayerState
             player.SetVelocityY(descentVelocity);
         }
 
-        // 전진 속도는 WalkSpeed 기준선으로 자동 유지 보장
-        player.CalculateForwardVelocity(player.WalkSpeed);
+        // 전진 속도는 점프대 진입 시 캡처한 속도(_entrySpeed)로 유지 (기본값 최소 WalkSpeed)
+        player.CalculateForwardVelocity(_entrySpeed);
     }
 
     public void OnCollisionCheck(PlayerController player, Collider other) { }
