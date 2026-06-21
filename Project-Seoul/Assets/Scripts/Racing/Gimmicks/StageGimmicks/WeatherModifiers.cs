@@ -35,6 +35,8 @@ namespace Seoul.Network.Game
             }
         }
 
+        public static void Clear() => Apply(WeatherType.Clear);
+
         public static string KoreanName(WeatherType w)
         {
             switch (w)

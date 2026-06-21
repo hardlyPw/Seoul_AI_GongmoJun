@@ -198,7 +198,6 @@ public class PlayerController : MonoBehaviour
         HandleJumpInput();
         HandleItemAndInteract();
         HandleSlipstreamCheck();
-        HandleItemAndInteract();
         UpdateRecoveryMultiplier();
         if (_invincibilityTimer > 0f) _invincibilityTimer -= Time.deltaTime;
         UpdateCameraOcclusion();

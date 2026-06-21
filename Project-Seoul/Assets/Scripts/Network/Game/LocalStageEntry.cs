@@ -16,6 +16,8 @@ namespace Seoul.Network.Game
 
         private void Awake()
         {
+            WeatherModifiers.Clear();
+
             // 이 씬의 로컬 소비 캐시를 비움 — 서버 응답으로 다시 채워질 것.
             // Awake에서 처리해야 NetworkScoreItem.Start가 stale 캐시를 안 본다.
             StageItemSync.ClearScene(gameObject.scene.name);

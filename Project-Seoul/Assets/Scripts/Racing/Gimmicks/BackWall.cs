@@ -13,6 +13,9 @@ namespace Seoul.Network.Game
         public bool UseMaxActiveWorldY;
         [Tooltip("World Y threshold used when UseMaxActiveWorldY is enabled.")]
         public float MaxActiveWorldY;
+        public bool UseLaneRange;
+        public int MinLane;
+        public int MaxLane;
 
         private void Reset() => EnsureTrigger();
         private void Awake() => EnsureTrigger();
@@ -26,6 +29,7 @@ namespace Seoul.Network.Game
         public bool IsActiveFor(PlayerController player)
         {
             if (player == null) return false;
+            if (UseLaneRange && (player.CurrentLane < MinLane || player.CurrentLane > MaxLane)) return false;
             if (!UseMaxActiveWorldY) return true;
             return player.transform.position.y <= MaxActiveWorldY;
         }

@@ -385,6 +385,12 @@ namespace Seoul.Network.Game
                 bwCol.size = new Vector3(safeWallThickness, holeTriggerHeight, safeWallWidthZ);
                 var backWall = backWallGO.AddComponent<BackWall>();
                 backWall.UseMaxActiveWorldY = false;
+                if (lm != null)
+                {
+                    backWall.UseLaneRange = true;
+                    backWall.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                    backWall.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                }
 
                 // NoEntry side zone — safe zone 영역에서 밖 lane → 출구 lane 진입 차단.
                 if (lm != null)
