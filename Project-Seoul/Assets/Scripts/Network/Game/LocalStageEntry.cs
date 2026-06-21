@@ -79,7 +79,15 @@ namespace Seoul.Network.Game
                 Debug.LogWarning("[LocalStageEntry] spawnPoint is not set.");
             }
 
-            owner.RequestStageResetServerRpc();
+            if (owner.TryGetComponent<PlayerController>(out var ownerController))
+            {
+                ownerController.Initialize(new NullInputProvider());
+                ownerController.SetMovementLocked(true);
+            }
+
+            // RequestReadyServerRpc: HasFinished 리셋 + 준비 완료 서버 통보를 한 번에 처리.
+            // 모든 플레이어가 RequestReadyServerRpc를 호출하면 서버가 EnableStageInputClientRpc로 동시에 입력 활성화.
+            owner.RequestReadyServerRpc();
         }
     }
 }

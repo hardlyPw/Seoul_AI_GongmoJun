@@ -1,0 +1,1 @@
+using Unity.Netcode; using UnityEngine; public class TestCompile : MonoBehaviour { void Test() { double t = NetworkManager.Singleton.ServerTime.Time; double b = NetworkManager.Singleton.NetworkTimeSystem.ServerBufferSec; } }

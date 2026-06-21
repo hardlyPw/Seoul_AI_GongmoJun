@@ -103,6 +103,7 @@ public class PlayerController : MonoBehaviour
     // 단일 슬롯이던 시절에는 한쪽이 끝나면 다른 효과가 사라지는 버그가 있었음.
     private readonly Dictionary<string, float> _speedModifiers = new();
     private Coroutine _slowCoroutine;
+    private bool _movementLocked;
 
     // 외부/상태 접근용 프로퍼티
     public IInputProvider Input => _input;
@@ -122,6 +123,26 @@ public class PlayerController : MonoBehaviour
     public int CurrentLane => _currentLane;
 
     public void Initialize(IInputProvider inputProvider) => _input = inputProvider;
+
+    public void SetMovementLocked(bool locked)
+    {
+        _movementLocked = locked;
+        if (locked) ResetMovementState();
+    }
+
+    public void ResetMovementState()
+    {
+        if (_currentState != null && _currentState != IdleState)
+        {
+            ChangeState(IdleState);
+        }
+
+        _velocity = Vector3.zero;
+        _laneChangeCooldownTimer = 0f;
+        _jumpBufferTimer = 0f;
+        _recoveryTimer = 0f;
+        _recoverySpeedMult = 1f;
+    }
 
     private void OnEnable()
     {
@@ -143,7 +164,11 @@ public class PlayerController : MonoBehaviour
 
     private void Start()
     {
-        if (_input == null) Initialize(new PlayerInputProvider());
+        if (_input == null)
+        {
+            bool networkControlled = TryGetComponent<Unity.Netcode.NetworkObject>(out _);
+            Initialize(networkControlled ? new NullInputProvider() : new PlayerInputProvider());
+        }
 
         if (LaneManager.Instance == null)
         {
@@ -188,6 +213,7 @@ public class PlayerController : MonoBehaviour
 
     private void Update()
     {
+        if (_movementLocked) return;
         if (_input == null) return;
         if (!IsLocallySimulated()) return;
 
@@ -207,6 +233,7 @@ public class PlayerController : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (_movementLocked) return;
         if (_input == null) return;
         if (!IsLocallySimulated()) return;
 
@@ -965,5 +992,8 @@ public class PlayerController : MonoBehaviour
     }
 
     public void SetVelocityY(float newY) => _velocity.y = newY;
+
+    /// <summary>현재 프레임의 X축(전진) 속도. AirborneState 진입 시 속도 캡처에 사용.</summary>
+    public float CurrentSpeedX => _velocity.x;
 
 }

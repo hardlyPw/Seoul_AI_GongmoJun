@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Seoul.Network.Game;
+using Unity.Collections;
 
 // 결승선 오브젝트에 부착. IsTrigger 콜라이더 필요.
 public class GoalTrigger : MonoBehaviour
@@ -15,17 +16,9 @@ public class GoalTrigger : MonoBehaviour
             if (!netPlayer.IsOwner) return;
             if (netPlayer.HasFinished.Value) return;
 
-            netPlayer.ReportGoalServerRpc();
-
-            if (!string.IsNullOrEmpty(nextSceneName))
-            {
-                Debug.Log($"[GoalTrigger] Owner goaled — local-loading '{nextSceneName}'");
-                SceneTransition.Load(nextSceneName);
-            }
-            else
-            {
-                Debug.LogWarning("[GoalTrigger] nextSceneName is empty — no scene load.");
-            }
+            // nextSceneName을 서버 RPC로 전달 — 모든 플레이어 골인 시 서버가 일괄 전환함
+            Debug.Log($"[GoalTrigger] Owner goaled — reporting to server with nextScene='{nextSceneName}'");
+            netPlayer.ReportGoalServerRpc(new FixedString64Bytes(nextSceneName ?? ""));
             return;
         }
 
