@@ -10,9 +10,9 @@ namespace Seoul.Network.Game
     [RequireComponent(typeof(BoxCollider))]
     public class LaneRangeZone : MonoBehaviour
     {
-        public enum BlockMode { HardBlock, Penalty, NoEntry }
+        public enum BlockMode { HardBlock, Penalty, NoEntry, BoundaryLock }
 
-        [Tooltip("HardBlock = 안→밖 차단. Penalty = 닿으면 감속+무적+깜빡임. NoEntry = 밖→안 차단.")]
+        [Tooltip("HardBlock = 안→밖 차단. Penalty = 닿으면 감속+무적+깜빡임. NoEntry = 밖→안 차단. BoundaryLock = 경계 양방향 차단.")]
         public BlockMode Mode = BlockMode.HardBlock;
 
         [Header("Lane Range (HardBlock 모드만 사용)")]

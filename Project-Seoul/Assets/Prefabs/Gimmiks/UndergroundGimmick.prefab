@@ -45,7 +45,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Seoul.Network.Game.UndergroundGimmick
   holeLength: 4
-  holeWidth: 2
+  holeMinLane: 2
+  holeMaxLane: 3
+  fallbackHoleWidth: 2
+  snapTransformToLaneCenter: 1
+  laneZoneMode: 0
+  laneLimitActiveBelowSurface: 0.25
   holeTriggerHeight: 3
   holeTriggerZClearance: 0.4
   undergroundDepth: 3
@@ -54,6 +59,10 @@ MonoBehaviour:
   exitRampLength: 6
   undergroundWallHeight: 3
   entranceGuardHeight: 1.5
+  exitGuardLength: 6
+  exitGuardHeight: 1.5
+  exitGuardThickness: 0.2
+  exitGuardForwardOffset: -6
   entranceStairCount: 5
   groundLayerName: Ground
   holeMaterial: {fileID: 0}

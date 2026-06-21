@@ -58,6 +58,16 @@ namespace Seoul.Network.Game
                  "0 이하로 두면 가드 생성 안 함.")]
         [SerializeField] private float entranceGuardHeight = 1.5f;
 
+        [Header("Exit Guard (출구 ㄷ자 안전 벽)")]
+        [Tooltip("출구 ramp 끝에서 앞으로 이어지는 ㄷ자 안전 벽 길이(x).")]
+        [SerializeField] private float exitGuardLength = 4.5f;
+        [Tooltip("출구 ㄷ자 안전 벽 높이(y).")]
+        [SerializeField] private float exitGuardHeight = 1.5f;
+        [Tooltip("출구 ㄷ자 안전 벽 두께.")]
+        [SerializeField] private float exitGuardThickness = 0.2f;
+        [Tooltip("출구 ㄷ자 벽과 접근불가 trigger를 x축 기준으로 이동합니다. +면 진행 방향, -면 ramp 쪽입니다.")]
+        [SerializeField] private float exitGuardForwardOffset = -1.6f;
+
         [Header("Entrance Stairs (입구 계단 — 시각용)")]
         [Tooltip("입구 계단 단 개수. 0 이면 계단 안 만듦. 시각용이라 collider 없음 — 캐릭터는 그대로 추락.")]
         [SerializeField] private int entranceStairCount = 5;
@@ -257,6 +267,22 @@ namespace Seoul.Network.Game
                     groundLayer: -1);
             }
 
+            if (lm != null)
+            {
+                var entranceLockGO = new GameObject("Entrance_BoundaryLockZone");
+                entranceLockGO.transform.SetParent(container.transform, false);
+                entranceLockGO.transform.localPosition = new Vector3(holeMidX, holeTriggerHeight * 0.5f, 0f);
+                entranceLockGO.hideFlags = HideFlags.DontSave;
+                var entranceLockCol = entranceLockGO.AddComponent<BoxCollider>();
+                entranceLockCol.isTrigger = true;
+                entranceLockCol.size = new Vector3(holeLength, holeTriggerHeight, holeWidth + sideMarginBoth);
+                var entranceLock = entranceLockGO.AddComponent<LaneRangeZone>();
+                entranceLock.Mode = LaneRangeZone.BlockMode.BoundaryLock;
+                entranceLock.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                entranceLock.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                entranceLock.UseMaxActiveWorldY = false;
+            }
+
             // 5) 지하 천장 (도로 밑면 분위기 — 구멍 영역은 비움)
             float ceilingY = -0.3f;
             float frontLen = Mathf.Max(0f, holeStartX - undergroundStartX);
@@ -296,7 +322,7 @@ namespace Seoul.Network.Game
                 rampTriggerGO.hideFlags = HideFlags.DontSave;
                 var rampTriggerCol = rampTriggerGO.AddComponent<BoxCollider>();
                 rampTriggerCol.isTrigger = true;
-                rampTriggerCol.size = new Vector3(exitRampLength, undergroundDepth + 1.5f, holeWidth);
+                rampTriggerCol.size = new Vector3(exitRampLength, undergroundDepth + 1.5f, triggerZ);
                 var exitRamp = rampTriggerGO.AddComponent<UndergroundExitRamp>();
                 // 시작/끝 world 좌표 = prefab world position + local offset.
                 exitRamp.startWorld = new Vector2(
@@ -305,29 +331,60 @@ namespace Seoul.Network.Game
                 exitRamp.endWorld = new Vector2(
                     transform.position.x + rampStartX + exitRampLength,
                     transform.position.y + 0f);
+                if (lm != null)
+                {
+                    exitRamp.UseLaneRange = true;
+                    exitRamp.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                    exitRamp.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                }
 
                 // 6-2) 출구 safe zone — 다른 플레이어 차단용.
                 //      (a) BackWall: ramp top 직전(상류 -x)에 모든 lane을 가로지르는 얇은 trigger.
                 //          PlayerController가 _velocity.x를 클램프 → 외부 surface 플레이어는 더 못 감.
                 //      (b) NoEntry LaneRangeZone: ramp top 위 safe zone 영역. 밖→안 lane change 차단,
                 //          안에서의 이동은 자유 → 출구 플레이어가 안에서 좌우 정렬 가능.
-                float safeZoneLength = 3f;
-                float safeZoneStartX = undergroundEndX;
+                float safeZoneLength = Mathf.Max(0.1f, exitGuardLength);
+                float safeZoneStartX = undergroundEndX + exitGuardForwardOffset;
                 float safeZoneMidX   = safeZoneStartX + safeZoneLength * 0.5f;
+                float safeWallThickness = Mathf.Max(0.05f, exitGuardThickness);
+                float safeWallWidthZ = holeWidth + safeWallThickness * 2f;
+                float backWallCenterX = safeZoneStartX - safeWallThickness * 0.5f;
 
-                // BackWall — 얇은 두께, 모든 lane 가로지름.
-                // ramp top(safeZoneStartX)보다 살짝 -x로 두어 출구 플레이어는 안 막힘 (이미 +x로 통과한 상태).
+                // Exit guard visuals: ㄷ shape, open toward +x.
+                // The rear wall sits just behind the safe zone so the player can still run out forward.
+                if (exitGuardHeight > 0.01f)
+                {
+                    float guardY = exitGuardHeight * 0.5f;
+                    float sideZ = holeWidth * 0.5f + safeWallThickness * 0.5f;
+
+                    CreateCube(container.transform, "Exit_Guard_NegZ",
+                        center: new Vector3(safeZoneMidX, guardY, -sideZ),
+                        size:   new Vector3(safeZoneLength, exitGuardHeight, safeWallThickness),
+                        mat:    undergroundMaterial,
+                        groundLayer: -1);
+                    CreateCube(container.transform, "Exit_Guard_PosZ",
+                        center: new Vector3(safeZoneMidX, guardY, sideZ),
+                        size:   new Vector3(safeZoneLength, exitGuardHeight, safeWallThickness),
+                        mat:    undergroundMaterial,
+                        groundLayer: -1);
+                    CreateCube(container.transform, "Exit_Guard_Back",
+                        center: new Vector3(backWallCenterX, guardY, 0f),
+                        size:   new Vector3(safeWallThickness, exitGuardHeight, safeWallWidthZ),
+                        mat:    undergroundMaterial,
+                        groundLayer: -1);
+                }
+
+                // BackWall — visible back wall과 같은 위치/폭의 접근 불가 trigger.
+                // 출구 lane만 막으므로 지상 플레이어는 W/S로 옆 lane에 빠져 앞으로 계속 갈 수 있다.
                 var backWallGO = new GameObject("Exit_BackWall");
                 backWallGO.transform.SetParent(container.transform, false);
-                float fullZWidth = (lm != null) ? (lm.LaneCount + 1f) * lm.LaneSpacing : 8f;
-                backWallGO.transform.localPosition = new Vector3(safeZoneStartX - 0.3f, holeTriggerHeight * 0.5f, 0f);
+                backWallGO.transform.localPosition = new Vector3(backWallCenterX, holeTriggerHeight * 0.5f, 0f);
                 backWallGO.hideFlags = HideFlags.DontSave;
                 var bwCol = backWallGO.AddComponent<BoxCollider>();
                 bwCol.isTrigger = true;
-                bwCol.size = new Vector3(0.2f, holeTriggerHeight, fullZWidth);
+                bwCol.size = new Vector3(safeWallThickness, holeTriggerHeight, safeWallWidthZ);
                 var backWall = backWallGO.AddComponent<BackWall>();
-                backWall.UseMaxActiveWorldY = true;
-                backWall.MaxActiveWorldY = transform.position.y - laneLimitActiveBelowSurface;
+                backWall.UseMaxActiveWorldY = false;
 
                 // NoEntry side zone — safe zone 영역에서 밖 lane → 출구 lane 진입 차단.
                 if (lm != null)
@@ -340,11 +397,10 @@ namespace Seoul.Network.Game
                     neCol.isTrigger = true;
                     neCol.size = new Vector3(safeZoneLength, holeTriggerHeight, holeWidth + sideMarginBoth);
                     var neZone = noEntryGO.AddComponent<LaneRangeZone>();
-                    neZone.Mode = LaneRangeZone.BlockMode.NoEntry;
+                    neZone.Mode = LaneRangeZone.BlockMode.BoundaryLock;
                     neZone.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
                     neZone.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
-                    neZone.UseMaxActiveWorldY = true;
-                    neZone.MaxActiveWorldY = transform.position.y - laneLimitActiveBelowSurface;
+                    neZone.UseMaxActiveWorldY = false;
                 }
             }
 
@@ -359,10 +415,16 @@ namespace Seoul.Network.Game
                 entRampGO.hideFlags = HideFlags.DontSave;
                 var entRampCol = entRampGO.AddComponent<BoxCollider>();
                 entRampCol.isTrigger = true;
-                entRampCol.size = new Vector3(holeLength, undergroundDepth + 1.5f, holeWidth);
+                entRampCol.size = new Vector3(holeLength, undergroundDepth + 1.5f, triggerZ);
                 var entRamp = entRampGO.AddComponent<UndergroundExitRamp>();
                 entRamp.startWorld = new Vector2(transform.position.x + holeStartX, transform.position.y + 0f);
                 entRamp.endWorld   = new Vector2(transform.position.x + holeEndX,   transform.position.y - undergroundDepth);
+                if (lm != null)
+                {
+                    entRamp.UseLaneRange = true;
+                    entRamp.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                    entRamp.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
+                }
             }
 
             // 7) 입구 계단 (블록 여러 개) — 시각용, collider 없음.

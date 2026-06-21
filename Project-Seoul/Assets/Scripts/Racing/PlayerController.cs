@@ -86,7 +86,8 @@ public class PlayerController : MonoBehaviour
     // 현재 캐릭터가 위에 있는 출구 ramp (없으면 null). FixedUpdate에서 캐릭터 y를 ramp surface로 자동 보정.
     private Seoul.Network.Game.UndergroundExitRamp _currentExitRamp;
     // 현재 캐릭터가 들어있는 lane 범위 제한 zone (없으면 null). 안에서 lane change target이 범위 밖이면 차단.
-    private Seoul.Network.Game.LaneRangeZone _currentLaneRangeZone;
+    private readonly System.Collections.Generic.HashSet<Seoul.Network.Game.LaneRangeZone> _overlappingLaneRangeZones
+        = new System.Collections.Generic.HashSet<Seoul.Network.Game.LaneRangeZone>();
     // Penalty zone 진입 시 부여되는 무적 시간. > 0인 동안: Penalty zone 재진입 + KnockDown 장애물 충돌 무시.
     private float _invincibilityTimer;
     private Coroutine _blinkCoroutine;
@@ -233,6 +234,7 @@ public class PlayerController : MonoBehaviour
     private void SnapToExitRamp()
     {
         if (_currentExitRamp == null) return;
+        if (!_currentExitRamp.IsActiveForLane(_currentLane)) return;
         if (_velocity.y > 0.1f) return;
 
         Vector3 newPos = _rb.position + _velocity * Time.fixedDeltaTime;
@@ -425,29 +427,39 @@ public class PlayerController : MonoBehaviour
 
     private bool IsHardBlockedByZone(int targetLane)
     {
-        if (_currentLaneRangeZone == null) return false;
-        if (!_currentLaneRangeZone.IsActiveFor(this)) return false;
-        switch (_currentLaneRangeZone.Mode)
+        foreach (var zone in _overlappingLaneRangeZones)
         {
-            case Seoul.Network.Game.LaneRangeZone.BlockMode.HardBlock:
-                return IsOutsideRangeAndAwayFromCurrent(targetLane);
-            case Seoul.Network.Game.LaneRangeZone.BlockMode.NoEntry:
+            if (zone == null) continue;
+            if (!zone.IsActiveFor(this)) continue;
+
+            int min = zone.MinLane;
+            int max = zone.MaxLane;
+            bool currentInside = _currentLane >= min && _currentLane <= max;
+            bool targetInside = targetLane >= min && targetLane <= max;
+
+            switch (zone.Mode)
+            {
+                case Seoul.Network.Game.LaneRangeZone.BlockMode.HardBlock:
+                    if (IsOutsideRangeAndAwayFromCurrent(zone, targetLane)) return true;
+                    break;
+                case Seoul.Network.Game.LaneRangeZone.BlockMode.NoEntry:
                 // 현재 lane이 범위 밖일 때 안으로 들어오는 lane change 차단. 안에서의 이동은 자유.
-                int min = _currentLaneRangeZone.MinLane;
-                int max = _currentLaneRangeZone.MaxLane;
-                bool currentInside = _currentLane >= min && _currentLane <= max;
-                bool targetInside  = targetLane  >= min && targetLane  <= max;
-                return !currentInside && targetInside;
-            default:
-                return false;
+                    if (!currentInside && targetInside) return true;
+                    break;
+                case Seoul.Network.Game.LaneRangeZone.BlockMode.BoundaryLock:
+                    if (currentInside != targetInside) return true;
+                    break;
+            }
         }
+
+        return false;
     }
 
     // zone 범위 밖으로 "벗어나는" 방향인지 판정. 현재 lane이 이미 밖이어도 안쪽으로 좁히는 변경(예: 4 → 3)은 허용.
-    private bool IsOutsideRangeAndAwayFromCurrent(int targetLane)
+    private bool IsOutsideRangeAndAwayFromCurrent(Seoul.Network.Game.LaneRangeZone zone, int targetLane)
     {
-        int min = _currentLaneRangeZone.MinLane;
-        int max = _currentLaneRangeZone.MaxLane;
+        int min = zone.MinLane;
+        int max = zone.MaxLane;
         if (targetLane >= min && targetLane <= max) return false; // target이 범위 안 → 허용
 
         // target이 범위 밖 — 현재 lane보다 더 멀어지는 경우만 차단.
@@ -583,7 +595,7 @@ public class PlayerController : MonoBehaviour
         var laneZone = col.GetComponentInParent<Seoul.Network.Game.LaneRangeZone>();
         if (laneZone != null)
         {
-            _currentLaneRangeZone = laneZone;
+            _overlappingLaneRangeZones.Add(laneZone);
             // Penalty 모드 zone 진입 — 방향 무관(정면 충돌/측면 진입 모두) 감속 + 무적 + 깜빡임.
             // 스턴/무적 중이면 무시. 같은 zone에 머무르며 lane만 바꿔도 OnTriggerEnter는 한 번뿐이라 중복 적용 X.
             if (laneZone.Mode == Seoul.Network.Game.LaneRangeZone.BlockMode.Penalty
@@ -626,7 +638,7 @@ public class PlayerController : MonoBehaviour
         if (ramp != null && _currentExitRamp == ramp) _currentExitRamp = null;
 
         var laneZone = col.GetComponentInParent<Seoul.Network.Game.LaneRangeZone>();
-        if (laneZone != null && _currentLaneRangeZone == laneZone) _currentLaneRangeZone = null;
+        if (laneZone != null) _overlappingLaneRangeZones.Remove(laneZone);
     }
 
     // ObstacleBase에서 호출. 충돌 지점을 받아 knockback 방향 계산.
