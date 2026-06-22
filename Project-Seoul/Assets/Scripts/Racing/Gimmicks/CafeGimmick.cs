@@ -5,19 +5,17 @@ using UnityEngine;
 
 namespace Seoul.Network.Game
 {
-    // 카페 기믹: startLane ~ startLane+2 총 3 lane을 점유.
-    // - startLane (가장 번호 낮은 lane): BlockWall로 막힘 — 진입 불가
-    // - startLane+1, startLane+2: InteriorTrigger 안에서 E(GetInteractDown) → itemToGrant 지급
+    // 카페 기믹: startLane ~ startLane+2 총 3 lane을 점유, 3 lane 모두 진입 가능.
+    // - 3 lane 어디서든 InteriorTrigger 안에서 E(GetInteractDown) → itemToGrant 지급
     //
     // Prefab 구조 (스크립트가 자동 정렬/크기 조정):
     //   CafeGimmick
     //   ├ Visual           (3 lane 폭 floor 마커)
-    //   ├ BlockWall        (1 lane, 비-트리거 collider — 플레이어 차단)
-    //   └ InteriorTrigger  (2 lane, 트리거 collider + CafeInteriorTrigger 컴포넌트)
+    //   └ InteriorTrigger  (3 lane, 트리거 collider + CafeInteriorTrigger 컴포넌트)
     public class CafeGimmick : MonoBehaviour
     {
         [Header("Lane")]
-        [Tooltip("카페가 점유할 시작 lane. 이 lane은 막히고, +1/+2 lane은 진입 가능.")]
+        [Tooltip("카페가 점유할 시작 lane. 이 lane부터 +2까지 3 lane 모두 진입 가능.")]
         [SerializeField] private int startLane = 0;
 
         [Header("Item")]
@@ -49,58 +47,37 @@ namespace Seoul.Network.Game
             var lm = LaneManager.Instance;
             if (lm == null) return;
 
-            int blockedLane = Mathf.Clamp(startLane, 0, lm.LaneCount - 1);
-            int entryMin    = Mathf.Clamp(startLane + 1, 0, lm.LaneCount - 1);
-            int entryMax    = Mathf.Clamp(startLane + 2, 0, lm.LaneCount - 1);
-            int footprintMax = entryMax;
+            int entryMin = Mathf.Clamp(startLane, 0, lm.LaneCount - 1);
+            int entryMax = Mathf.Clamp(startLane + 2, 0, lm.LaneCount - 1);
 
             // Root world Z = 전체 footprint 중심
             var pos = transform.position;
-            pos.z = lm.GetLaneCenterZ(blockedLane, footprintMax);
+            pos.z = lm.GetLaneCenterZ(entryMin, entryMax);
             transform.position = pos;
-            float rootZ = pos.z;
-
-            float spacing = lm.LaneSpacing;
 
             // Visual (floor, 3 lane 전체)
             var visual = transform.Find("Visual");
             if (visual != null)
             {
                 var s = visual.localScale;
-                s.z = lm.GetLaneSpanZ(blockedLane, footprintMax);
+                s.z = lm.GetLaneSpanZ(entryMin, entryMax);
                 visual.localScale = s;
                 var lp = visual.localPosition;
                 lp.z = 0f;
                 visual.localPosition = lp;
             }
 
-            // BlockWall (가장 번호 낮은 lane, 차단)
-            var wall = transform.Find("BlockWall");
-            if (wall != null)
-            {
-                float wallZ = lm.GetLaneZ(blockedLane);
-                var lp = wall.localPosition;
-                lp.z = wallZ - rootZ;
-                wall.localPosition = lp;
-
-                var s = wall.localScale;
-                s.z = spacing;
-                wall.localScale = s;
-            }
-
-            // InteriorTrigger (entry lane 2칸, E 픽업 zone)
+            // InteriorTrigger (3 lane 전체, E 픽업 zone)
             var trigger = transform.Find("InteriorTrigger");
             if (trigger != null)
             {
-                float trigZ = lm.GetLaneCenterZ(entryMin, entryMax);
                 var lp = trigger.localPosition;
-                lp.z = trigZ - rootZ;
+                lp.z = 0f;
                 trigger.localPosition = lp;
 
                 if (trigger.TryGetComponent<BoxCollider>(out var col))
                 {
                     var s = col.size;
-                    // localScale이 1이라고 가정 — 만약 scale을 쓴다면 나눠줘야 함.
                     s.z = lm.GetLaneSpanZ(entryMin, entryMax) / Mathf.Max(0.001f, trigger.localScale.z);
                     col.size = s;
                 }
