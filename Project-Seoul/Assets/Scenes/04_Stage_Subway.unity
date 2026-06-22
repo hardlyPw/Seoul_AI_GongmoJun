@@ -914,7 +914,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7710598008222799194, guid: 673fc25a7fb899340b6df041cc23c8b9, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 5
+      value: 7.64
       objectReference: {fileID: 0}
     - target: {fileID: 7710598008222799194, guid: 673fc25a7fb899340b6df041cc23c8b9, type: 3}
       propertyPath: m_LocalPosition.y
@@ -1461,7 +1461,7 @@ GameObject:
   - component: {fileID: 1599837799}
   - component: {fileID: 1599837798}
   - component: {fileID: 1599837802}
-  - component: {fileID: 1599837801}
+  - component: {fileID: 1599837803}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1536,29 +1536,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1599837797}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.30070576, y: 0, z: 0, w: 0.953717}
+  m_LocalRotation: {x: 0.30070576, y: -0, z: -0, w: 0.953717}
   m_LocalPosition: {x: 0, y: 7, z: -8}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 35, y: 0, z: 0}
---- !u!114 &1599837801
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1599837797}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f5c4f4c994bed2348a9d194b741a5d62, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CameraFollow
-  target: {fileID: 0}
-  xOffset: 0
-  smoothTime: 0.2
-  yFollowThreshold: -1
 --- !u!114 &1599837802
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1603,6 +1587,22 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!114 &1599837803
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1599837797}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b0f9e29342d012c4a914f2121e267ddf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CameraShake
+  target: {fileID: 0}
+  xOffset: 0
+  smoothTime: 0.2
+  yFollowThreshold: -1
 --- !u!1 &1647716465
 GameObject:
   m_ObjectHideFlags: 0
