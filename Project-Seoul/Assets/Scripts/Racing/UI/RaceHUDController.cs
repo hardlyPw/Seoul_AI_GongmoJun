@@ -99,6 +99,8 @@ namespace Seoul.Network.Game
                     qteStateText.text = "";
                 }
             }
+        }
+
         private void EnsureItemText()
         {
             if (itemText != null) return;
