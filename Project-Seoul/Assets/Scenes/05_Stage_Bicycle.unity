@@ -4341,6 +4341,7 @@ MonoBehaviour:
   target: {fileID: 0}
   xOffset: 0
   smoothTime: 0.2
+  yFollowThreshold: -1
 --- !u!114 &1599837802
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4507,6 +4508,7 @@ MonoBehaviour:
   - {fileID: 1102040957}
   - {fileID: 1222556679}
   - {fileID: 512328473}
+  weatherText: {fileID: 0}
   refreshInterval: 0.2
 --- !u!1001 &1674946882
 PrefabInstance:
