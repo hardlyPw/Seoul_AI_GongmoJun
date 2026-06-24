@@ -66,8 +66,9 @@ MonoBehaviour:
   entranceStairCount: 5
   groundLayerName: Ground
   holeMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
-  undergroundMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
-  rampMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
-  stairsMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
+  undergroundMaterial: {fileID: 2100000, guid: 3c559732461049543af9afccbcad04c5, type: 2}
+  rampMaterial: {fileID: 2100000, guid: 64dcdf259cccac6459030223307b4f38, type: 2}
+  stairsMaterial: {fileID: 2100000, guid: f3c5524c461b5d645aabfdbd1a93452e, type: 2}
+  ceilingMaterial: {fileID: 2100000, guid: 469593817c10c3840b2124ca0386597e, type: 2}
   extraHideRenderers: []
   extraFadeMaterial: {fileID: 2100000, guid: de2aaff75f5b90541bd60507ee267a44, type: 2}
