@@ -11,6 +11,10 @@ public class PlayerAirborneState : IPlayerState
     private readonly Key[] _qteKeys = { Key.W, Key.A, Key.S, Key.D };
     private Key _currentRequiredKey;
 
+    public Key CurrentRequiredKey => _currentRequiredKey;
+    public int SuccessCount => _qteSuccessCount;
+    public bool IsQTESuccess => _qteSuccessCount >= 5;
+
     public void EnterState(PlayerController player)
     {
         _airTimer = 3f; // 기획 규격인 총 체공 시간 3초 고정

@@ -50,6 +50,7 @@ namespace Seoul.Network.Game
         [SerializeField] private Material wallMaterial;
 
         private const string ContainerName = "_GeneratedVisuals";
+        private static Material s_RuntimeFallbackMaterial;
 
         private void OnEnable() => Rebuild();
 
@@ -117,6 +118,8 @@ namespace Seoul.Network.Game
                 sideLaneMargin = 1f;
             }
             float sideMarginBoth = sideLaneMargin * 2f;
+            int lockMinLane = lm != null ? Mathf.Clamp(Mathf.Min(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1) : bridgeMinLane;
+            int lockMaxLane = lm != null ? Mathf.Clamp(Mathf.Max(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1) : bridgeMaxLane;
 
             // 좌표 기준: local origin = 입구 계단 시작점, 도로 표면(y=0).
             float entranceStartX = 0f;
@@ -179,9 +182,32 @@ namespace Seoul.Network.Game
                 zoneCol.isTrigger = true;
                 zoneCol.size = new Vector3(bridgeLength, bridgeWallHeight + 2f, bridgeWidth + sideMarginBoth);
                 var zone = zoneGO.AddComponent<LaneRangeZone>();
-                zone.MinLane = Mathf.Clamp(Mathf.Min(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
-                zone.MaxLane = Mathf.Clamp(Mathf.Max(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1);
+                zone.MinLane = lockMinLane;
+                zone.MaxLane = lockMaxLane;
                 zone.Mode = laneZoneMode;
+            }
+
+            if (lm != null)
+            {
+                BuildLaneLockZone("Entrance_Stair_BoundaryLockZone",
+                    container.transform,
+                    xStart: entranceStartX,
+                    xEnd: entranceEndX,
+                    centerY: (bridgeHeight + bridgeWallHeight) * 0.5f,
+                    sizeY: bridgeHeight + bridgeWallHeight + 1f,
+                    widthZ: bridgeWidth + sideMarginBoth,
+                    minLane: lockMinLane,
+                    maxLane: lockMaxLane);
+
+                BuildLaneLockZone("Exit_Stair_BoundaryLockZone",
+                    container.transform,
+                    xStart: exitStartX,
+                    xEnd: exitEndX,
+                    centerY: (bridgeHeight + bridgeWallHeight) * 0.5f,
+                    sizeY: bridgeHeight + bridgeWallHeight + 1f,
+                    widthZ: bridgeWidth + sideMarginBoth,
+                    minLane: lockMinLane,
+                    maxLane: lockMaxLane);
             }
 
             // 6) 입구 ramp snap trigger (UndergroundExitRamp 재사용, start=낮 end=높)
@@ -189,14 +215,20 @@ namespace Seoul.Network.Game
                 container: container.transform,
                 xStart: entranceStartX, xEnd: entranceEndX,
                 startY: 0f, endY: bridgeHeight,
-                widthZ: bridgeWidth);
+                widthZ: bridgeWidth,
+                minLane: lockMinLane,
+                maxLane: lockMaxLane,
+                useLaneRange: lm != null);
 
             // 7) 출구 ramp snap trigger (start=높 end=낮)
             BuildRampTrigger("Exit_RampTrigger",
                 container: container.transform,
                 xStart: exitStartX, xEnd: exitEndX,
                 startY: bridgeHeight, endY: 0f,
-                widthZ: bridgeWidth);
+                widthZ: bridgeWidth,
+                minLane: lockMinLane,
+                maxLane: lockMaxLane,
+                useLaneRange: lm != null);
         }
 
         // 계단 N개 cube 생성. 시각용(collider 없음).
@@ -227,7 +259,8 @@ namespace Seoul.Network.Game
         // Ramp snap trigger (UndergroundExitRamp) 생성.
         // PlayerController가 trigger 안일 때 캐릭터 y를 SurfaceYAt(x)로 자동 보정.
         private void BuildRampTrigger(string n, Transform container,
-            float xStart, float xEnd, float startY, float endY, float widthZ)
+            float xStart, float xEnd, float startY, float endY, float widthZ,
+            int minLane, int maxLane, bool useLaneRange)
         {
             var go = new GameObject(n);
             go.transform.SetParent(container, false);
@@ -241,6 +274,26 @@ namespace Seoul.Network.Game
             var ramp = go.AddComponent<UndergroundExitRamp>();
             ramp.startWorld = new Vector2(transform.position.x + xStart, transform.position.y + startY);
             ramp.endWorld   = new Vector2(transform.position.x + xEnd,   transform.position.y + endY);
+            ramp.UseLaneRange = useLaneRange;
+            ramp.MinLane = minLane;
+            ramp.MaxLane = maxLane;
+        }
+
+        private void BuildLaneLockZone(string n, Transform container,
+            float xStart, float xEnd, float centerY, float sizeY, float widthZ,
+            int minLane, int maxLane)
+        {
+            var go = new GameObject(n);
+            go.transform.SetParent(container, false);
+            go.transform.localPosition = new Vector3((xStart + xEnd) * 0.5f, centerY, 0f);
+            go.hideFlags = HideFlags.DontSave;
+            var col = go.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(xEnd - xStart, sizeY, widthZ);
+            var zone = go.AddComponent<LaneRangeZone>();
+            zone.Mode = LaneRangeZone.BlockMode.BoundaryLock;
+            zone.MinLane = minLane;
+            zone.MaxLane = maxLane;
         }
 
         private void CreateCube(Transform parent, string n, Vector3 center, Vector3 size, Material mat, int groundLayer)
@@ -260,8 +313,32 @@ namespace Seoul.Network.Game
                 // trigger collider로 남겨 물리 이동은 막지 않되 투명화 대상 검출에만 사용한다.
                 c.isTrigger = true;
             }
-            if (mat != null && go.TryGetComponent<MeshRenderer>(out var mr)) mr.sharedMaterial = mat;
+            if (go.TryGetComponent<MeshRenderer>(out var mr)) mr.sharedMaterial = mat != null ? mat : RuntimeFallbackMaterial;
             go.hideFlags = HideFlags.DontSave;
+        }
+
+        private static Material RuntimeFallbackMaterial
+        {
+            get
+            {
+                if (s_RuntimeFallbackMaterial != null) return s_RuntimeFallbackMaterial;
+
+                var shader = Shader.Find("Universal Render Pipeline/Lit")
+                    ?? Shader.Find("Universal Render Pipeline/Simple Lit")
+                    ?? Shader.Find("Standard");
+                if (shader == null) return null;
+
+                s_RuntimeFallbackMaterial = new Material(shader)
+                {
+                    name = "GeneratedGimmickFallbackMaterial",
+                    hideFlags = HideFlags.DontSave
+                };
+                if (s_RuntimeFallbackMaterial.HasProperty("_BaseColor"))
+                    s_RuntimeFallbackMaterial.SetColor("_BaseColor", new Color(0.45f, 0.45f, 0.45f, 1f));
+                else if (s_RuntimeFallbackMaterial.HasProperty("_Color"))
+                    s_RuntimeFallbackMaterial.SetColor("_Color", new Color(0.45f, 0.45f, 0.45f, 1f));
+                return s_RuntimeFallbackMaterial;
+            }
         }
 
         private static void DestroySafe(Object o)

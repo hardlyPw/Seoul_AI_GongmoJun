@@ -127,6 +127,7 @@ public class PlayerController : MonoBehaviour
     public bool IsAirborne => _currentState == AirborneState;
     public bool IsGrounded => _isGrounded;
     public float VerticalSpeed => _velocity.y;
+    public bool IsAirborne => _currentState == AirborneState;
     public int CurrentLane => _currentLane;
 
     public void Initialize(IInputProvider inputProvider) => _input = inputProvider;
@@ -791,26 +792,18 @@ public class PlayerController : MonoBehaviour
 
     private void AddOcclusionRenderers(Transform hitT)
     {
-        Transform t = hitT;
-        while (t != null)
+        if (hitT == null) return;
+        if (hitT == transform || hitT.IsChildOf(transform)) return;
+
+        var rs = hitT.GetComponentsInChildren<Renderer>(includeInactive: false);
+        for (int i = 0; i < rs.Length; i++)
         {
-            if (t == transform || t.IsChildOf(transform)) return;
+            var r = rs[i];
+            if (r == null) continue;
+            if (r.transform == transform || r.transform.IsChildOf(transform)) continue;
 
-            var rs = t.GetComponentsInChildren<Renderer>(includeInactive: false);
-            bool foundAny = false;
-            for (int i = 0; i < rs.Length; i++)
-            {
-                var r = rs[i];
-                if (r == null) continue;
-                if (r.transform == transform || r.transform.IsChildOf(transform)) continue;
-
-                foundAny = true;
-                _occlusionCurrent.Add(r);
-                if (!_occlusionState.ContainsKey(r)) ApplyOcclusion(r);
-            }
-
-            if (foundAny) return;
-            t = t.parent;
+            _occlusionCurrent.Add(r);
+            if (!_occlusionState.ContainsKey(r)) ApplyOcclusion(r);
         }
     }
 
@@ -927,32 +920,41 @@ public class PlayerController : MonoBehaviour
 
     // ── 기믹: 강제 라인 변경 ──────────────────────────────
 
-    private void OnGimmickForceLaneChange(int direction)
+private void OnGimmickForceLaneChange(int direction)
+{
+    if (TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj))
     {
-        if (TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj))
-        {
-            bool isMyCharacter = netObj.IsOwner;
-            bool isServerSimulatedBot = Unity.Netcode.NetworkManager.Singleton != null &&
-                                        Unity.Netcode.NetworkManager.Singleton.IsServer &&
-                                        !netObj.IsOwnedByServer &&
-                                        netObj.OwnerClientId == Unity.Netcode.NetworkManager.ServerClientId;
+        // 1. 내 로컬 클라이언트에서 '내 캐릭터'인가?
+        bool isMyCharacter = netObj.IsOwner;
+        
+        // 2. 서버(호스트)에서 시뮬레이션 중인 '봇'인가? (조건식 오타 수정)
+        bool isServerSimulatedBot = Unity.Netcode.NetworkManager.Singleton != null &&
+                                    Unity.Netcode.NetworkManager.Singleton.IsServer &&
+                                    netObj.IsOwnedByServer; // ! 제거함
 
-            if (!isMyCharacter && !isServerSimulatedBot) return;
-        }
-
-        if (IsFallen) return;
-
-        int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
-        int targetLane = Mathf.Clamp(_currentLane + direction, 0, laneCount - 1);
-
-        if (targetLane != _currentLane)
-        {
-            _currentLane = targetLane;
-            _laneChangeCooldownTimer = laneChangeCooldown;
-
-            Debug.Log($"[{gameObject.name}] 글로벌 기믹 신호로 레인 강제 보정: {targetLane}");
-        }
+        // [중요] 내 화면에 보이는 '다른 유저의 캐릭터 복사본'들도 레인 변경 연출을 적용해야 합니다.
+        // 클라이언트 사이드 예측(Client-side prediction)을 위해 내 화면의 모든 캐릭터를 일단 이동시킵니다.
+        // 만약 소유권(Owner) 기준 철저하게 서버 동기화만 따진다면 아래 주석을 해제하되, 
+        // 지금처럼 클라 연출용이라면 모든 캐릭터가 움직이도록 이 조건문을 주석 처리하거나 제거하는 것이 좋습니다.
+        
+        // if (!isMyCharacter && !isServerSimulatedBot) return; 
     }
+
+    if (IsFallen) return;
+
+    int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
+    int targetLane = Mathf.Clamp(_currentLane + direction, 0, laneCount - 1);
+
+    if (targetLane != _currentLane)
+    {
+        _currentLane = targetLane;
+        _laneChangeCooldownTimer = laneChangeCooldown;
+
+        // 실제 Transform 이동을 처리하는 로직(예: StartLaneChangeLerp 등)이 
+        // _currentLane 변경 시점에 자동으로 실행되는지 확인하세요!
+        Debug.Log($"[{gameObject.name}] 글로벌 기믹 신호로 레인 강제 보정: {targetLane}");
+    }
+}
     
     // 아이템 관련 수정
     // 택시 아이템 사용 시 중앙 레인으로 강제 이동

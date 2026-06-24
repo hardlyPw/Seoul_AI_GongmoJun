@@ -64,15 +64,29 @@ public class RaceHUD : MonoBehaviour
             rt.anchorMax = new Vector2(0.5f, 1f);
             rt.pivot     = new Vector2(0.5f, 1f);
             rt.anchoredPosition = new Vector2(0f, -20f);
-            rt.sizeDelta        = new Vector2(200f, 50f);
-            stateText.fontSize  = 24f;
+            rt.sizeDelta        = new Vector2(400f, 200f); // 멀티라인(3줄) 텍스트가 잘리지 않도록 높이/너비 대폭 확장
+            stateText.fontSize  = 28f;
             stateText.alignment = TextAlignmentOptions.Center;
+            stateText.overflowMode = TextOverflowModes.Overflow; // 텍스트 영역을 벗어나도 강제로 출력되도록 설정
         }
     }
 
     private void Update()
     {
-        if (player == null) return;
+        if (player == null)
+        {
+            // 로컬 플레이어 자동 연결 (멀티플레이 동적 생성 환경 대응)
+            foreach (var p in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
+            {
+                if (p.TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj))
+                {
+                    if (netObj.IsOwner) { player = p; break; }
+                }
+                else { player = p; break; }
+            }
+            if (player == null) return;
+            Debug.Log($"[RaceHUD] 로컬 플레이어 자동 바인딩 완료: {player.name}");
+        }
 
         if (staminaBar != null)
             staminaBar.value = player.Stamina / player.MaxStamina;
@@ -85,11 +99,43 @@ public class RaceHUD : MonoBehaviour
                 ? $"ITEM: {inventory.HeldItem.ItemName}"
                 : "ITEM: 없음";
 
+        if (stateText == null)
+        {
+            // 인스펙터에서 stateText가 누락되었을 경우 자식 오브젝트에서 자동 탐색 시도
+            foreach (var tmp in GetComponentsInChildren<TextMeshProUGUI>(true))
+            {
+                if (tmp.name.Contains("State") || tmp.name.Contains("state"))
+                {
+                    stateText = tmp;
+                    Debug.Log($"[RaceHUD] stateText 자동 탐색 및 바인딩 완료: {tmp.name}");
+                    break;
+                }
+            }
+        }
+
         if (stateText != null)
         {
+            if (!stateText.gameObject.activeSelf) stateText.gameObject.SetActive(true);
+
             if (player.IsFallen)         stateText.text = "넘어짐!";
+            else if (player.IsAirborne)
+            {
+                if (player.AirborneState.IsQTESuccess)
+                    stateText.text = "QTE 성공!\n(+30pt)";
+                else
+                    stateText.text = $"[QTE 묘기]\n입력 키: {player.AirborneState.CurrentRequiredKey}\n성공: {player.AirborneState.SuccessCount}/5";
+                
+                Debug.Log($"[RaceHUD] 체공 중 UI 표시 업데이트 성공: {stateText.text}");
+            }
             else if (player.IsSprinting) stateText.text = "SPRINT";
             else                          stateText.text = "";
+        }
+        else
+        {
+            if (player.IsAirborne)
+            {
+                Debug.LogWarning("[RaceHUD] 플레이어가 체공 중이나 stateText가 null이어서 UI에 표시하지 못했습니다. RaceHUD 프리팹 인스펙터에서 StateText를 연결해주세요.");
+            }
         }
     }
 }

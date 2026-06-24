@@ -42,15 +42,19 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9bf08e7c188112843a49c41f4e1b7cf0, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Seoul.Network.Game.OverpassGimmick
   bridgeLength: 12
   bridgeHeight: 3
-  bridgeWidth: 2
-  stairLength: 4
+  bridgeMinLane: 2
+  bridgeMaxLane: 3
+  fallbackBridgeWidth: 2
+  snapTransformToLaneCenter: 1
+  laneZoneMode: 0
+  stairLength: 5
   stairCount: 5
-  bridgeWallHeight: 1.5
+  bridgeWallHeight: 2
   groundLayerName: Ground
-  bridgeMaterial: {fileID: 0}
-  stairsMaterial: {fileID: 0}
-  wallMaterial: {fileID: 0}
+  bridgeMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
+  stairsMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
+  wallMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
