@@ -83,7 +83,7 @@ public abstract class BaseQTE : MonoBehaviour
         SubwayHandle,
         BikeTrick,
         CardTag,
-        Elevator
+
     }
 
     protected abstract QteActionType GetActionType();

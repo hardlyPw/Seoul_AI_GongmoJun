@@ -31,17 +31,17 @@ namespace Seoul.Network.Lobby
         private async void OnCreateClicked()
         {
             SetInteractable(false);
-            SetStatus("Creating room...");
+            SetStatus("방 생성 중...");
 
             var session = await LobbyManager.Instance.CreateRoomAsync();
             if (session == null)
             {
-                SetStatus("Failed to create room.");
+                SetStatus("방 생성에 실패했습니다.");
                 SetInteractable(true);
                 return;
             }
 
-            SetStatus($"Created. Code: {session.Code}");
+            SetStatus($"생성 완료. 코드: {session.Code}");
 
             // Host loads scene via NGO so all clients sync follow
             if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
@@ -59,22 +59,22 @@ namespace Seoul.Network.Lobby
             string code = joinCodeInput != null ? joinCodeInput.text.Trim() : "";
             if (string.IsNullOrEmpty(code))
             {
-                SetStatus("Enter a room code.");
+                SetStatus("방 코드를 입력하세요.");
                 return;
             }
 
             SetInteractable(false);
-            SetStatus("Joining...");
+            SetStatus("참가 중...");
 
             var session = await LobbyManager.Instance.JoinRoomByCodeAsync(code);
             if (session == null)
             {
-                SetStatus("Failed to join.");
+                SetStatus("참가에 실패했습니다.");
                 SetInteractable(true);
                 return;
             }
 
-            SetStatus($"Joined: {session.Code}. Waiting for host scene...");
+            SetStatus($"참가 완료: {session.Code}. 호스트 장면을 기다리는 중...");
             // Client does NOT call LoadScene — NGO auto-syncs to host's current scene
         }
 

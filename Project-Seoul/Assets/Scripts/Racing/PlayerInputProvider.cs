@@ -6,6 +6,7 @@ public class PlayerInputProvider : IInputProvider
     private const float DashDoubleTapWindow = 0.3f;
 
     private float _lastJPressTime = -10f;
+    private int _lastJPressFrame = -1;
     private bool  _firstJPressArmed;
 
     public float GetLaneChange()
@@ -19,9 +20,11 @@ public class PlayerInputProvider : IInputProvider
     }
 
     public bool GetJumpDown()     => Keyboard.current?.kKey.wasPressedThisFrame ?? false;
+
     public bool GetSprint()       => Keyboard.current?.jKey.isPressed           ?? false;
+
     public bool GetItemUse()      => Keyboard.current?.lKey.wasPressedThisFrame ?? false;
-    public bool GetInteractDown() => Keyboard.current?.qKey.wasPressedThisFrame ?? false;
+    public bool GetInteractDown() => Keyboard.current?.eKey.wasPressedThisFrame ?? false;
     public bool GetQTEKeyDown(Key key)
     {
         if (Keyboard.current == null) return false;
@@ -33,17 +36,20 @@ public class PlayerInputProvider : IInputProvider
     {
         var kb = Keyboard.current;
         if (kb == null || !kb.jKey.wasPressedThisFrame) return false;
+        if (_lastJPressFrame == Time.frameCount) return false;
 
         float now = Time.unscaledTime;
         if (_firstJPressArmed && (now - _lastJPressTime) <= DashDoubleTapWindow)
         {
             _firstJPressArmed = false;
             _lastJPressTime = -10f;
+            _lastJPressFrame = Time.frameCount;
             return true;
         }
 
         _firstJPressArmed = true;
         _lastJPressTime = now;
+        _lastJPressFrame = Time.frameCount;
         return false;
     }
 }

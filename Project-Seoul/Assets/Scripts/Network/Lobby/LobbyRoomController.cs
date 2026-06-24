@@ -62,7 +62,7 @@ namespace Seoul.Network.Lobby
             var session = LobbyManager.Instance?.CurrentSession;
             if (session == null) return;
 
-            if (roomCodeLabel != null) roomCodeLabel.text = $"Code: {session.Code}";
+            if (roomCodeLabel != null) roomCodeLabel.text = $"초대코드: {session.Code}";
 
             var players = session.Players;
             for (int i = 0; i < playerSlotLabels.Length; i++)

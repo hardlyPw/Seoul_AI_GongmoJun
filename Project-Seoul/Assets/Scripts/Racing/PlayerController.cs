@@ -46,6 +46,18 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float playerCheckRadius = 0.6f;
     [SerializeField] private LayerMask playerLayer;
 
+    [Header("Camera Occlusion Fade")]
+    [Tooltip("카메라-플레이어 사이를 가로막는 오브젝트의 material로 swap할 반투명 material. 비우면 occlusionFadeAlpha 값으로 런타임 생성.")]
+    [SerializeField] private Material occlusionFadeMaterial;
+    [Tooltip("occlusionFadeMaterial이 비었을 때 자동 생성되는 fade material의 알파(0~1). 낮을수록 더 투명.")]
+    [SerializeField, Range(0f, 1f)] private float occlusionFadeAlpha = 0.3f;
+    [Tooltip("occlusion 체크 주기 (프레임). 1=매 프레임. 클수록 가벼움.")]
+    [SerializeField] private int occlusionCheckFrameInterval = 3;
+    [Tooltip("occlusion raycast가 검사할 layer mask. ~0 = 모든 layer.")]
+    [SerializeField] private LayerMask occlusionMask = ~0;
+    [Tooltip("occlusion raycast 시작 카메라. 비우면 자동으로 Camera.main 사용.")]
+    [SerializeField] private Camera occlusionCamera;
+
     public event Action OnItemUse;
     public event Action OnInteract;
 
@@ -64,14 +76,24 @@ public class PlayerController : MonoBehaviour
 
     private float _stamina;
     private bool _isGrounded;
-    // 지하차도 입구(UndergroundHole) trigger 중첩 카운트.
-    // > 0 이면 CheckGrounded 결과를 무시하고 _isGrounded=false 강제 → 도로 collider가 있어도 추락.
-    private int _holeOverlapCount;
+    // 현재 캡슐이 trigger 안에 들어있는 모든 UndergroundHole. 매 프레임 _currentLane이 hole 범위 안인지 재검사 →
+    // capsule이 살짝 옆 lane trigger를 침범해도 _currentLane이 hole 차선이 아니면 안 빠짐.
+    private readonly System.Collections.Generic.HashSet<Seoul.Network.Game.UndergroundHole> _hoveringHoles
+        = new System.Collections.Generic.HashSet<Seoul.Network.Game.UndergroundHole>();
     // 지하차도 옆 벽(UndergroundWall) trigger 중첩 카운트.
     // > 0 인 상태에서 lane change가 실제로 발생하려는 순간 → fall + knockback.
     private int _underWallOverlap;
     // 현재 캐릭터가 위에 있는 출구 ramp (없으면 null). FixedUpdate에서 캐릭터 y를 ramp surface로 자동 보정.
     private Seoul.Network.Game.UndergroundExitRamp _currentExitRamp;
+    // 현재 캐릭터가 들어있는 lane 범위 제한 zone (없으면 null). 안에서 lane change target이 범위 밖이면 차단.
+    private readonly System.Collections.Generic.HashSet<Seoul.Network.Game.LaneRangeZone> _overlappingLaneRangeZones
+        = new System.Collections.Generic.HashSet<Seoul.Network.Game.LaneRangeZone>();
+    // Penalty zone 진입 시 부여되는 무적 시간. > 0인 동안: Penalty zone 재진입 + KnockDown 장애물 충돌 무시.
+    private float _invincibilityTimer;
+    private Coroutine _blinkCoroutine;
+    // 현재 겹치는 BackWall들. 활성 Y 조건을 만족하는 벽이 있으면 _velocity.x를 0 이하로 클램프(전진 금지).
+    private readonly System.Collections.Generic.HashSet<Seoul.Network.Game.BackWall> _overlappingBackWalls
+        = new System.Collections.Generic.HashSet<Seoul.Network.Game.BackWall>();
     private int _currentLane;
     private float _laneChangeCooldownTimer;
     private float _jumpBufferTimer;
@@ -126,11 +148,6 @@ public class PlayerController : MonoBehaviour
     private void OnEnable()
     {
         StageEventManager.OnForceLaneChangeRequested += OnGimmickForceLaneChange;
-    }
-
-    private void OnDisable()
-    {
-        StageEventManager.OnForceLaneChangeRequested -= OnGimmickForceLaneChange;
     }
 
     private void Awake()
@@ -208,8 +225,9 @@ public class PlayerController : MonoBehaviour
         HandleJumpInput();
         HandleItemAndInteract();
         HandleSlipstreamCheck();
-        HandleItemAndInteract();
         UpdateRecoveryMultiplier();
+        if (_invincibilityTimer > 0f) _invincibilityTimer -= Time.deltaTime;
+        UpdateCameraOcclusion();
 
         _currentState.UpdateState(this);
     }
@@ -224,6 +242,9 @@ public class PlayerController : MonoBehaviour
         ApplyGravity();
         _currentState.FixedUpdateState(this);
         HandleLaneSnap();
+        // 출구 BackWall 안에 있으면 전진(+x) 차단. lane change(z), 중력(y)은 그대로.
+        // 단, 출구 ramp를 올라오는 중인 플레이어는 BackWall 예외 (안 그러면 ramp 위에서 멈춤).
+        if (IsInActiveBackWall() && _currentExitRamp == null && _velocity.x > 0f) _velocity.x = 0f;
         ApplyVelocity();
         ApplyVelocityInternal();
         SnapToExitRamp();
@@ -234,18 +255,34 @@ public class PlayerController : MonoBehaviour
     // - 위로 가는 중(점프, vy>0.1)에만 skip → 점프 곡선 자유.
     // - 추락(vy<0)에도 snap 작동 → 입구 계단을 부드럽게 따라 내려옴.
     // - surface와의 갭이 1m를 넘으면 skip (점프 정점 등 — 캐릭터 곡선이 다시 surface 가까이 오면 다시 snap).
+    // 주의: ApplyVelocity가 이미 _rb.MovePosition으로 (oldPos + vel*dt) target을 설정해뒀지만
+    //       _rb.position은 다음 물리 step까지 OLD 값. 여기서 _rb.position을 그대로 쓰면
+    //       방금 설정한 전진 target을 덮어써서 x 이동이 통째로 사라짐. velocity를 다시 적용한 뒤 y만 보정.
     private void SnapToExitRamp()
     {
         if (_currentExitRamp == null) return;
+        if (!_currentExitRamp.IsActiveForLane(_currentLane)) return;
         if (_velocity.y > 0.1f) return;
 
-        float surfaceY = _currentExitRamp.SurfaceYAt(transform.position.x);
-        float targetY  = surfaceY + _col.height * 0.5f; // capsule pivot center 가정
-        if (Mathf.Abs(targetY - transform.position.y) > 1f) return;
+        Vector3 newPos = _rb.position + _velocity * Time.fixedDeltaTime;
 
-        var pos = _rb.position;
-        pos.y = targetY;
-        _rb.MovePosition(pos);
+        // ApplyVelocity가 적용하던 lane z snap을 여기서도 동일하게 보존 (없으면 ramp 중 lane change overshoot).
+        if (LaneManager.Instance != null)
+        {
+            float targetZ = LaneManager.Instance.GetLaneZ(_currentLane);
+            if (Mathf.Sign(targetZ - _rb.position.z) != Mathf.Sign(targetZ - newPos.z)
+                && Mathf.Abs(targetZ - newPos.z) < laneSnapSpeed * Time.fixedDeltaTime * 1.5f)
+            {
+                newPos.z = targetZ;
+            }
+        }
+
+        float surfaceY = _currentExitRamp.SurfaceYAt(newPos.x);
+        float targetY  = surfaceY + _col.height * 0.5f; // capsule pivot center 가정
+        if (Mathf.Abs(targetY - newPos.y) > 1f) return;
+
+        newPos.y = targetY;
+        _rb.MovePosition(newPos);
         _velocity.y = 0f;
     }
 
@@ -379,15 +416,83 @@ public class PlayerController : MonoBehaviour
         {
             // 지하차도 영역에서 lane change 시도 → fall (옆에서 hole로 진입 방지).
             if (_underWallOverlap > 0) return; // 지하차도 옆 벽 — lane change 자체 차단 (페널티 없이 막힘)
-            _currentLane--;
+            int target = _currentLane - 1;
+            // HardBlock 모드 zone만 차단 — Penalty 모드는 lane change 그대로 진행 (페널티는 OnTriggerEnter에서 처리).
+            if (IsHardBlockedByZone(target)) return;
+            _currentLane = target;
             _laneChangeCooldownTimer = laneChangeCooldown;
         }
         else if (v < -0.5f && _currentLane < laneCount - 1)
         {
             if (_underWallOverlap > 0) return; // 지하차도 옆 벽 — lane change 자체 차단 (페널티 없이 막힘)
-            _currentLane++;
+            int target = _currentLane + 1;
+            if (IsHardBlockedByZone(target)) return;
+            _currentLane = target;
             _laneChangeCooldownTimer = laneChangeCooldown;
         }
+    }
+
+    private bool IsInActiveHole()
+    {
+        foreach (var hole in _hoveringHoles)
+        {
+            if (hole == null) continue;
+            if (_currentLane >= hole.MinLane && _currentLane <= hole.MaxLane) return true;
+        }
+        return false;
+    }
+
+    private bool IsInActiveBackWall()
+    {
+        foreach (var wall in _overlappingBackWalls)
+        {
+            if (wall == null) continue;
+            if (wall.IsActiveFor(this)) return true;
+        }
+        return false;
+    }
+
+    private bool IsHardBlockedByZone(int targetLane)
+    {
+        foreach (var zone in _overlappingLaneRangeZones)
+        {
+            if (zone == null) continue;
+            if (!zone.IsActiveFor(this)) continue;
+
+            int min = zone.MinLane;
+            int max = zone.MaxLane;
+            bool currentInside = _currentLane >= min && _currentLane <= max;
+            bool targetInside = targetLane >= min && targetLane <= max;
+
+            switch (zone.Mode)
+            {
+                case Seoul.Network.Game.LaneRangeZone.BlockMode.HardBlock:
+                    if (IsOutsideRangeAndAwayFromCurrent(zone, targetLane)) return true;
+                    break;
+                case Seoul.Network.Game.LaneRangeZone.BlockMode.NoEntry:
+                // 현재 lane이 범위 밖일 때 안으로 들어오는 lane change 차단. 안에서의 이동은 자유.
+                    if (!currentInside && targetInside) return true;
+                    break;
+                case Seoul.Network.Game.LaneRangeZone.BlockMode.BoundaryLock:
+                    if (currentInside != targetInside) return true;
+                    break;
+            }
+        }
+
+        return false;
+    }
+
+    // zone 범위 밖으로 "벗어나는" 방향인지 판정. 현재 lane이 이미 밖이어도 안쪽으로 좁히는 변경(예: 4 → 3)은 허용.
+    private bool IsOutsideRangeAndAwayFromCurrent(Seoul.Network.Game.LaneRangeZone zone, int targetLane)
+    {
+        int min = zone.MinLane;
+        int max = zone.MaxLane;
+        if (targetLane >= min && targetLane <= max) return false; // target이 범위 안 → 허용
+
+        // target이 범위 밖 — 현재 lane보다 더 멀어지는 경우만 차단.
+        if (targetLane < min && targetLane < _currentLane) return true; // 더 작은 쪽으로 벗어남
+        if (targetLane > max && targetLane > _currentLane) return true; // 더 큰 쪽으로 벗어남
+        return false;
     }
 
 
@@ -465,8 +570,9 @@ public class PlayerController : MonoBehaviour
             Vector3.down, out var hit,
             dist, groundLayer, QueryTriggerInteraction.Ignore);
 
-        // UndergroundHole 안에 있는 동안은 도로 SphereCast 결과 무시 (지하차도 입구 추락 처리).
-        if (_holeOverlapCount > 0) _isGrounded = false;
+        // hole trigger 안 + _currentLane이 hole의 lane 범위 안일 때만 도로 ground 무시 → 추락.
+        // 옆 lane에서 trigger 살짝 침범해도 lane 검사로 걸러짐.
+        if (IsInActiveHole()) _isGrounded = false;
 
         if (debugGround)
             Debug.Log($"[Grounded] origin={origin} pos.y={transform.position.y:F2} grounded={_isGrounded} dist={dist:F2} hit={(hit.collider != null ? hit.collider.name : "none")}");
@@ -499,21 +605,43 @@ public class PlayerController : MonoBehaviour
 
     private void OnTriggerEnter(Collider col)
     {
-        // 지하차도 입구 — 스턴 중에도 카운트해야 exit와 짝이 맞음.
-        if (col.GetComponentInParent<Seoul.Network.Game.UndergroundHole>() != null)
-            _holeOverlapCount++;
+        // 지하차도 입구 — 스턴 중에도 등록해야 exit와 짝이 맞음.
+        // 추락 여부는 CheckGrounded에서 _currentLane을 hole 범위와 매 프레임 비교해서 결정.
+        var holeEnter = col.GetComponentInParent<Seoul.Network.Game.UndergroundHole>();
+        if (holeEnter != null) _hoveringHoles.Add(holeEnter);
 
         if (col.GetComponentInParent<Seoul.Network.Game.UndergroundWall>() != null)
             _underWallOverlap++;
 
+        var backWallEnter = col.GetComponentInParent<Seoul.Network.Game.BackWall>();
+        if (backWallEnter != null) _overlappingBackWalls.Add(backWallEnter);
+
         var ramp = col.GetComponentInParent<Seoul.Network.Game.UndergroundExitRamp>();
         if (ramp != null) _currentExitRamp = ramp;
+
+        var laneZone = col.GetComponentInParent<Seoul.Network.Game.LaneRangeZone>();
+        if (laneZone != null)
+        {
+            _overlappingLaneRangeZones.Add(laneZone);
+            // Penalty 모드 zone 진입 — 방향 무관(정면 충돌/측면 진입 모두) 감속 + 무적 + 깜빡임.
+            // 스턴/무적 중이면 무시. 같은 zone에 머무르며 lane만 바꿔도 OnTriggerEnter는 한 번뿐이라 중복 적용 X.
+            if (laneZone.Mode == Seoul.Network.Game.LaneRangeZone.BlockMode.Penalty
+                && laneZone.IsActiveFor(this)
+                && _currentState != StunState
+                && _invincibilityTimer <= 0f)
+            {
+                ApplyLaneZonePenalty(laneZone);
+            }
+        }
 
         if (_currentState == StunState) return; // 스턴 상태 면역(무적) 유지
 
         // 아이템 관련 수정
         // [추가] 킥보드 및 택시 돌진(IsItemDashing) 중에는 일반 장애물 충돌 판정을 무시
         if (TryGetComponent<NetworkItemInventory>(out var inv) && inv.IsItemDashing) return;
+
+        // Penalty zone에서 받은 무적 동안 KnockDown 장애물도 면역.
+        if (_invincibilityTimer > 0f) return;
 
         if (col.TryGetComponent<ObstacleBase>(out var obstacle) && obstacle.KnockDownOnCollision)
         {
@@ -524,14 +652,20 @@ public class PlayerController : MonoBehaviour
 
     private void OnTriggerExit(Collider col)
     {
-        if (col.GetComponentInParent<Seoul.Network.Game.UndergroundHole>() != null)
-            _holeOverlapCount = Mathf.Max(0, _holeOverlapCount - 1);
+        var holeExit = col.GetComponentInParent<Seoul.Network.Game.UndergroundHole>();
+        if (holeExit != null) _hoveringHoles.Remove(holeExit);
 
         if (col.GetComponentInParent<Seoul.Network.Game.UndergroundWall>() != null)
             _underWallOverlap = Mathf.Max(0, _underWallOverlap - 1);
 
+        var backWallExit = col.GetComponentInParent<Seoul.Network.Game.BackWall>();
+        if (backWallExit != null) _overlappingBackWalls.Remove(backWallExit);
+
         var ramp = col.GetComponentInParent<Seoul.Network.Game.UndergroundExitRamp>();
         if (ramp != null && _currentExitRamp == ramp) _currentExitRamp = null;
+
+        var laneZone = col.GetComponentInParent<Seoul.Network.Game.LaneRangeZone>();
+        if (laneZone != null) _overlappingLaneRangeZones.Remove(laneZone);
     }
 
     // ObstacleBase에서 호출. 충돌 지점을 받아 knockback 방향 계산.
@@ -562,34 +696,257 @@ public class PlayerController : MonoBehaviour
         ClearSpeedMultiplier(SlowSource);
     }
 
-    // ── 기믹: 강제 라인 변경 ──────────────────────────────
-
-    private void OnGimmickForceLaneChange(int direction)
+    // Penalty zone 효과: 감속(ApplySlow 재사용) + 무적 타이머 + 깜빡임 코루틴.
+    private void ApplyLaneZonePenalty(Seoul.Network.Game.LaneRangeZone zone)
     {
-        if (TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj))
-        {
-            bool isMyCharacter = netObj.IsOwner;
-            bool isServerSimulatedBot = Unity.Netcode.NetworkManager.Singleton != null &&
-                                        Unity.Netcode.NetworkManager.Singleton.IsServer &&
-                                        !netObj.IsOwnedByServer &&
-                                        netObj.OwnerClientId == Unity.Netcode.NetworkManager.ServerClientId;
+        ApplySlow(zone.PenaltySpeedRatio, zone.PenaltySlowDuration);
+        _invincibilityTimer = zone.InvincibilityDuration;
+        if (_blinkCoroutine != null) StopCoroutine(_blinkCoroutine);
+        _blinkCoroutine = StartCoroutine(BlinkRoutine(zone.InvincibilityDuration, zone.BlinkInterval));
+    }
 
-            if (!isMyCharacter && !isServerSimulatedBot) return;
+    // 캐릭터 자식 Renderer들을 interval 주기로 on/off 토글. 끝나면 모두 enabled=true로 복원.
+    private System.Collections.IEnumerator BlinkRoutine(float duration, float interval)
+    {
+        var renderers = GetComponentsInChildren<Renderer>(includeInactive: false);
+        float t = 0f;
+        bool visible = true;
+        while (t < duration)
+        {
+            visible = !visible;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (renderers[i] != null) renderers[i].enabled = visible;
+            }
+            float wait = Mathf.Max(0.02f, interval);
+            yield return new WaitForSeconds(wait);
+            t += wait;
+        }
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i] != null) renderers[i].enabled = true;
+        }
+        _blinkCoroutine = null;
+    }
+
+    // ── 카메라 occlusion fade ───────────────────────────────
+    // 카메라 → 플레이어 ray 사이를 가로막는 Renderer들의 material을 fade material로 swap (없으면 hide).
+    // 더 이상 가리지 않으면 원본 material 복원. 로컬 owner만 수행 (AI/원격 플레이어는 카메라 없음).
+    // N 프레임마다 한 번씩 검사 (occlusionCheckFrameInterval).
+    private readonly System.Collections.Generic.Dictionary<Renderer, Material[]> _occlusionState
+        = new System.Collections.Generic.Dictionary<Renderer, Material[]>();
+    private readonly System.Collections.Generic.HashSet<Renderer> _occlusionCurrent
+        = new System.Collections.Generic.HashSet<Renderer>();
+    private static readonly System.Collections.Generic.List<Renderer> _occlusionScratch
+        = new System.Collections.Generic.List<Renderer>();
+    private RaycastHit[] _occlusionHitBuffer;
+    private int _occlusionTick;
+
+    private void UpdateCameraOcclusion()
+    {
+        // 로컬 owner만 (AI 봇/원격 플레이어는 카메라 없음).
+        if (TryGetComponent<Unity.Netcode.NetworkObject>(out var no) && !no.IsOwner) return;
+
+        if (++_occlusionTick < Mathf.Max(1, occlusionCheckFrameInterval)) return;
+        _occlusionTick = 0;
+
+        if (occlusionCamera == null) occlusionCamera = Camera.main;
+        if (occlusionCamera == null) return;
+
+        Vector3 camPos = occlusionCamera.transform.position;
+        Vector3 playerPos = transform.position + Vector3.up * (_col.height * 0.5f);
+        Vector3 delta = playerPos - camPos;
+        float dist = delta.magnitude;
+        if (dist < 0.01f) return;
+        Vector3 dir = delta / dist;
+
+        if (_occlusionHitBuffer == null || _occlusionHitBuffer.Length < 32) _occlusionHitBuffer = new RaycastHit[32];
+        int hitCount = Physics.RaycastNonAlloc(camPos, dir, _occlusionHitBuffer, dist, occlusionMask, QueryTriggerInteraction.Collide);
+
+        _occlusionCurrent.Clear();
+        for (int i = 0; i < hitCount; i++)
+        {
+            var hitT = _occlusionHitBuffer[i].collider != null ? _occlusionHitBuffer[i].collider.transform : null;
+            if (hitT == null) continue;
+            if (hitT == transform || hitT.IsChildOf(transform)) continue;
+
+            AddOcclusionRenderers(hitT);
         }
 
-        if (IsFallen) return;
-
-        int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
-        int targetLane = Mathf.Clamp(_currentLane + direction, 0, laneCount - 1);
-
-        if (targetLane != _currentLane)
+        // 더 이상 가리지 않는 것 복원.
+        _occlusionScratch.Clear();
+        foreach (var kv in _occlusionState)
         {
-            _currentLane = targetLane;
-            _laneChangeCooldownTimer = laneChangeCooldown;
+            if (!_occlusionCurrent.Contains(kv.Key)) _occlusionScratch.Add(kv.Key);
+        }
+        for (int i = 0; i < _occlusionScratch.Count; i++) RestoreOcclusion(_occlusionScratch[i]);
+    }
 
-            Debug.Log($"[{gameObject.name}] 글로벌 기믹 신호로 레인 강제 보정: {targetLane}");
+    private void AddOcclusionRenderers(Transform hitT)
+    {
+        if (hitT == null) return;
+        if (hitT == transform || hitT.IsChildOf(transform)) return;
+
+        var rs = hitT.GetComponentsInChildren<Renderer>(includeInactive: false);
+        for (int i = 0; i < rs.Length; i++)
+        {
+            var r = rs[i];
+            if (r == null) continue;
+            if (r.transform == transform || r.transform.IsChildOf(transform)) continue;
+
+            _occlusionCurrent.Add(r);
+            if (!_occlusionState.ContainsKey(r)) ApplyOcclusion(r);
         }
     }
+
+    // 원본 material을 instance로 복사한 뒤 transparent mode로 변환 + alpha 낮춤 → 텍스처/색은 그대로 유지하며 반투명화.
+    // occlusionFadeMaterial이 명시적으로 설정돼 있으면 그 material로 swap (사용자 의도 존중).
+    private void ApplyOcclusion(Renderer r)
+    {
+        var originals = r.sharedMaterials;
+        _occlusionState[r] = originals;
+
+        var faded = new Material[originals.Length];
+        for (int i = 0; i < faded.Length; i++)
+        {
+            if (originals[i] == null) { faded[i] = null; continue; }
+            if (occlusionFadeMaterial != null)
+            {
+                faded[i] = occlusionFadeMaterial;
+            }
+            else
+            {
+                // 원본을 복사해서 transparent로 변환 → 원본 텍스처/색 유지.
+                var copy = new Material(originals[i]);
+                ConfigureTransparent(copy, occlusionFadeAlpha);
+                faded[i] = copy;
+            }
+        }
+        r.sharedMaterials = faded;
+    }
+
+    private void RestoreOcclusion(Renderer r)
+    {
+        if (_occlusionState.TryGetValue(r, out var originals))
+        {
+            if (r != null)
+            {
+                // ApplyOcclusion에서 만든 임시 material instance 해제 (메모리 누수 방지).
+                if (occlusionFadeMaterial == null)
+                {
+                    var current = r.sharedMaterials;
+                    for (int i = 0; i < current.Length; i++)
+                    {
+                        // 원본 배열에 없는 것 = 우리가 만든 instance → 파괴.
+                        bool isOriginal = false;
+                        for (int j = 0; j < originals.Length; j++)
+                        {
+                            if (current[i] == originals[j]) { isOriginal = true; break; }
+                        }
+                        if (!isOriginal && current[i] != null) Destroy(current[i]);
+                    }
+                }
+                r.sharedMaterials = originals;
+            }
+            _occlusionState.Remove(r);
+        }
+    }
+
+    // 주어진 material을 in-place로 transparent 모드 + alpha 적용. URP Lit / Standard / 그 외(_Color, _BaseColor 직접 수정) 처리.
+    private static void ConfigureTransparent(Material m, float alpha)
+    {
+        if (m == null || m.shader == null) return;
+        string shaderName = m.shader.name;
+
+        if (shaderName.Contains("Universal") || shaderName.Contains("URP"))
+        {
+            m.SetFloat("_Surface", 1f);
+            m.SetFloat("_Blend", 0f);
+            m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            m.SetInt("_ZWrite", 0);
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.DisableKeyword("_ALPHATEST_ON");
+            m.renderQueue = 3000;
+        }
+        else if (shaderName == "Standard")
+        {
+            m.SetFloat("_Mode", 3f); // Transparent
+            m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            m.SetInt("_ZWrite", 0);
+            m.DisableKeyword("_ALPHATEST_ON");
+            m.EnableKeyword("_ALPHABLEND_ON");
+            m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            m.renderQueue = 3000;
+        }
+        else
+        {
+            // 알 수 없는 shader — 알파만 적용 (Transparent shader라면 반영됨).
+            m.renderQueue = 3000;
+        }
+
+        // 색상 알파 적용 (URP/Built-in 양쪽 모두 시도).
+        if (m.HasProperty("_BaseColor"))
+        {
+            var c = m.GetColor("_BaseColor");
+            c.a = alpha;
+            m.SetColor("_BaseColor", c);
+        }
+        if (m.HasProperty("_Color"))
+        {
+            var c = m.GetColor("_Color");
+            c.a = alpha;
+            m.SetColor("_Color", c);
+        }
+    }
+
+    private void OnDisable()
+    {
+        StageEventManager.OnForceLaneChangeRequested -= OnGimmickForceLaneChange;
+        // 모든 가린 오브젝트 원복.
+        _occlusionScratch.Clear();
+        foreach (var kv in _occlusionState) _occlusionScratch.Add(kv.Key);
+        for (int i = 0; i < _occlusionScratch.Count; i++) RestoreOcclusion(_occlusionScratch[i]);
+    }
+
+    // ── 기믹: 강제 라인 변경 ──────────────────────────────
+
+private void OnGimmickForceLaneChange(int direction)
+{
+    if (TryGetComponent<Unity.Netcode.NetworkObject>(out var netObj))
+    {
+        // 1. 내 로컬 클라이언트에서 '내 캐릭터'인가?
+        bool isMyCharacter = netObj.IsOwner;
+        
+        // 2. 서버(호스트)에서 시뮬레이션 중인 '봇'인가? (조건식 오타 수정)
+        bool isServerSimulatedBot = Unity.Netcode.NetworkManager.Singleton != null &&
+                                    Unity.Netcode.NetworkManager.Singleton.IsServer &&
+                                    netObj.IsOwnedByServer; // ! 제거함
+
+        // [중요] 내 화면에 보이는 '다른 유저의 캐릭터 복사본'들도 레인 변경 연출을 적용해야 합니다.
+        // 클라이언트 사이드 예측(Client-side prediction)을 위해 내 화면의 모든 캐릭터를 일단 이동시킵니다.
+        // 만약 소유권(Owner) 기준 철저하게 서버 동기화만 따진다면 아래 주석을 해제하되, 
+        // 지금처럼 클라 연출용이라면 모든 캐릭터가 움직이도록 이 조건문을 주석 처리하거나 제거하는 것이 좋습니다.
+        
+        // if (!isMyCharacter && !isServerSimulatedBot) return; 
+    }
+
+    if (IsFallen) return;
+
+    int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
+    int targetLane = Mathf.Clamp(_currentLane + direction, 0, laneCount - 1);
+
+    if (targetLane != _currentLane)
+    {
+        _currentLane = targetLane;
+        _laneChangeCooldownTimer = laneChangeCooldown;
+
+        // 실제 Transform 이동을 처리하는 로직(예: StartLaneChangeLerp 등)이 
+        // _currentLane 변경 시점에 자동으로 실행되는지 확인하세요!
+        Debug.Log($"[{gameObject.name}] 글로벌 기믹 신호로 레인 강제 보정: {targetLane}");
+    }
+}
     
     // 아이템 관련 수정
     // 택시 아이템 사용 시 중앙 레인으로 강제 이동

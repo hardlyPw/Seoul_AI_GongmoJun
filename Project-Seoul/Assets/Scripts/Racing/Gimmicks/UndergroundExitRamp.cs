@@ -13,6 +13,9 @@ namespace Seoul.Network.Game
         public Vector2 startWorld;
         [Tooltip("비탈 높은 쪽 (끝) world X / Y")]
         public Vector2 endWorld;
+        public bool UseLaneRange;
+        public int MinLane;
+        public int MaxLane;
 
         private void Reset() => EnsureTrigger();
         private void Awake() => EnsureTrigger();
@@ -28,6 +31,12 @@ namespace Seoul.Network.Game
         {
             float t = Mathf.InverseLerp(startWorld.x, endWorld.x, worldX);
             return Mathf.Lerp(startWorld.y, endWorld.y, t);
+        }
+
+        public bool IsActiveForLane(int lane)
+        {
+            if (!UseLaneRange) return true;
+            return lane >= MinLane && lane <= MaxLane;
         }
     }
 }
