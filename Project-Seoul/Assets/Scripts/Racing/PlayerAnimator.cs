@@ -1,28 +1,28 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 
-/// <summary>
-/// PlayerControllerÀÇ ÇöÀç »óÅÂ¸¦ ÀĞ¾î¼­, °Å±â¿¡ ¸Â´Â ¾Ö´Ï¸ŞÀÌ¼ÇÀ» Àç»ıÇÏ´Â "´Ù¸®" ½ºÅ©¸³Æ®.
-/// PlayerController°¡ ºÙ¾îÀÖ´Â °°Àº ¿ÀºêÁ§Æ®(Player ·çÆ®)¿¡ ÇÔ²² ºÙÀÔ´Ï´Ù.
-/// Animator´Â ÀÚ½Ä °­¾ÆÁö ¸ğµ¨¿¡ ÀÖ´Â °ÍÀ» Inspector¿¡¼­ ¿¬°áÇØÁİ´Ï´Ù.
-/// </summary>
+// PlayerControllerì˜ í˜„ì¬ "ìƒíƒœ"ë¥¼ ì½ì–´ì„œ ê±°ê¸°ì— ë§ëŠ” ì• ë‹ˆë©”ì´ì…˜ì„ ì¬ìƒí•˜ëŠ” ë‹¤ë¦¬ ìŠ¤í¬ë¦½íŠ¸.
+// ìƒíƒœ ê¸°ë°˜(state-machine) ë°©ì‹ â€” ì†ë„ê°€ ì•„ë‹ˆë¼ FSM ìƒíƒœë¡œ íŒë‹¨í•œë‹¤.
+// PlayerControllerê°€ ë¶™ì€ ê°™ì€ ì˜¤ë¸Œì íŠ¸(Player ë£¨íŠ¸)ì— í•¨ê»˜ ë¶™ì´ê³ ,
+// ìì‹ ê°•ì•„ì§€ì˜ Animatorë¥¼ Inspectorì—ì„œ ì—°ê²°í•œë‹¤.
 [RequireComponent(typeof(PlayerController))]
 public class PlayerAnimator : MonoBehaviour
 {
-    [Header("¿¬°á")]
-    [Tooltip("ÀÚ½Ä °­¾ÆÁö ¸ğµ¨¿¡ ºÙ¾îÀÖ´Â Animator¸¦ ¿©±â¿¡ µå·¡±×ÇÏ¼¼¿ä. ºñ¿öµÎ¸é ÀÚ½Ä¿¡¼­ ÀÚµ¿À¸·Î Ã£½À´Ï´Ù.")]
+    [Header("ì—°ê²°")]
+    [Tooltip("ìì‹ ê°•ì•„ì§€ ëª¨ë¸ì˜ Animatorë¥¼ ë“œë˜ê·¸. ë¹„ì›Œë‘ë©´ ìì‹ì—ì„œ ìë™ìœ¼ë¡œ ì°¾ìŒ.")]
     [SerializeField] private Animator animator;
 
-    [Header("¾Ö´Ï¸ŞÀÌ¼Ç »óÅÂ ÀÌ¸§")]
-    [Tooltip("Animator¿¡ ³ÖÀº °¢ »óÅÂ(¹Ú½º)ÀÇ ÀÌ¸§°ú ¶È°°ÀÌ Àû¾îÁÖ¼¼¿ä. ´ë¼Ò¹®ÀÚ±îÁö Á¤È®È÷.")]
-    [SerializeField] private string idleState = "Idle";
-    [SerializeField] private string runState = "Running";
-    [SerializeField] private string fastRunState = "FastRun";
-    [SerializeField] private string jumpState = "Jump";
-    [Tooltip("³Ñ¾îÁü(Stun) µ¿ÀÛÀÌ µû·Î ¾øÀ¸¸é ºñ¿öµÎ¼¼¿ä. ºñ¾îÀÖÀ¸¸é idle·Î ´ëÃ¼µË´Ï´Ù.")]
+    [Header("ì• ë‹ˆë©”ì´ì…˜ ìƒíƒœ ì´ë¦„ (Animator ë°•ìŠ¤ ì´ë¦„ê³¼ ì •í™•íˆ ì¼ì¹˜)")]
+    [SerializeField] private string idleState = "Idle";        // ì¶œë°œì„  ëŒ€ê¸°
+    [SerializeField] private string walkState = "Running";     // í‰ì†Œ ìë™ ì „ì§„
+    [SerializeField] private string runState = "RunningFast"; // J í™€ë“œ ìŠ¤í”„ë¦°íŠ¸
+    [SerializeField] private string dashState = "RunningFast"; // ëŒ€ì‹œ
+    [SerializeField] private string jumpState = "Jump";        // ì í”„í‚¤ ì í”„
+    [SerializeField] private string airborneState = "Jump";        // ì í”„ëŒ€ ë¬˜ê¸°(ê³µì¤‘)
+    [Tooltip("ë„˜ì–´ì§ ë™ì‘ì´ ì—†ìœ¼ë©´ ë¹„ì›Œë‘ê¸° â€” idleë¡œ ëŒ€ì²´ë¨.")]
     [SerializeField] private string fallenState = "";
 
-    [Header("ÀüÈ¯ ºÎµå·¯¿ò")]
-    [Tooltip("µ¿ÀÛÀÌ ¹Ù²ğ ¶§ ¼¯ÀÌ´Â ½Ã°£(ÃÊ). 0ÀÌ¸é Áï½Ã ÀüÈ¯.")]
+    [Header("ì „í™˜ ë¶€ë“œëŸ¬ì›€")]
+    [Tooltip("ë™ì‘ ì „í™˜ ì‹œ ì„ì´ëŠ” ì‹œê°„(ì´ˆ). 0ì´ë©´ ì¦‰ì‹œ.")]
     [SerializeField] private float crossFadeTime = 0.12f;
 
     private PlayerController _player;
@@ -31,13 +31,9 @@ public class PlayerAnimator : MonoBehaviour
     private void Awake()
     {
         _player = GetComponent<PlayerController>();
-
-        // Animator¸¦ ¾È ³Ö¾úÀ¸¸é ÀÚ½Ä¿¡¼­ ÀÚµ¿À¸·Î Ã£¾Æº»´Ù.
+        if (animator == null) animator = GetComponentInChildren<Animator>();
         if (animator == null)
-            animator = GetComponentInChildren<Animator>();
-
-        if (animator == null)
-            Debug.LogError("[PlayerAnimator] Animator¸¦ Ã£Áö ¸øÇß½À´Ï´Ù. °­¾ÆÁö ¸ğµ¨ÀÇ Animator¸¦ Inspector¿¡ ¿¬°áÇØÁÖ¼¼¿ä.");
+            Debug.LogError("[PlayerAnimator] Animatorë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤. ê°•ì•„ì§€ ëª¨ë¸ì˜ Animatorë¥¼ ì—°ê²°í•˜ì„¸ìš”.");
     }
 
     private void Update()
@@ -45,32 +41,21 @@ public class PlayerAnimator : MonoBehaviour
         if (animator == null || _player == null) return;
 
         string target = DecideState();
-
-        // ÀÌ¹Ì ±× µ¿ÀÛ ÁßÀÌ¸é ´Ù½Ã Àç»ıÇÏÁö ¾Ê´Â´Ù (¾Ö´Ï¸ŞÀÌ¼ÇÀÌ Ã³À½À¸·Î Æ¢´Â °Í ¹æÁö).
-        if (target == _currentAnim) return;
+        if (string.IsNullOrEmpty(target) || target == _currentAnim) return;
 
         _currentAnim = target;
         animator.CrossFade(target, crossFadeTime);
     }
 
-    /// <summary>
-    /// ¿ì¼±¼øÀ§´ë·Î °Ë»çÇØ¼­ Áö±İ Àç»ıÇÒ ¾Ö´Ï¸ŞÀÌ¼Ç ÀÌ¸§À» °í¸¥´Ù.
-    /// (³Ñ¾îÁü > Á¡ÇÁ > ´ë½Ã > ´Ş¸®±â > °¡¸¸È÷)
-    /// </summary>
+    // ìš°ì„ ìˆœìœ„: ë„˜ì–´ì§ > ì í”„í‚¤ì í”„ > ì í”„ëŒ€ê³µì¤‘ > ëŒ€ì‹œ > ìŠ¤í”„ë¦°íŠ¸ > ê±·ê¸° > ëŒ€ê¸°
     private string DecideState()
     {
-        if (_player.IsFallen)
-            return string.IsNullOrEmpty(fallenState) ? idleState : fallenState;
-
-        if (_player.IsAirborne)
-            return jumpState;
-
-        if (_player.IsDashing)
-            return fastRunState;
-
-        if (_player.IsSprinting)
-            return runState;
-
+        if (_player.IsFallen) return string.IsNullOrEmpty(fallenState) ? idleState : fallenState;
+        if (_player.IsJumping) return jumpState;
+        if (_player.IsAirborne) return airborneState;
+        if (_player.IsDashing) return dashState;
+        if (_player.IsSprinting) return runState;
+        if (_player.IsWalking) return walkState;
         return idleState;
     }
 }
