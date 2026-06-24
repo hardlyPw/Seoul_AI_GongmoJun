@@ -81,6 +81,8 @@ namespace Seoul.Network.Game
         [SerializeField] private Material undergroundMaterial;
         [SerializeField] private Material rampMaterial;
         [SerializeField] private Material stairsMaterial;
+        [Tooltip("지하 천장 전용 머티리얼 (형광등 등). 비워두면 undergroundMaterial로 폴백.")]
+        [SerializeField] private Material ceilingMaterial;
 
         [Header("Visibility - 추가로 숨길 대상")]
         [Tooltip("지하차도 진입 시 자기 카메라 시야에서 처리할 MeshRenderer. 도로 GameObject 등을 할당.")]
@@ -288,17 +290,18 @@ namespace Seoul.Network.Game
             float ceilingY = -0.3f;
             float frontLen = Mathf.Max(0f, holeStartX - undergroundStartX);
             float backLen  = Mathf.Max(0f, undergroundEndX - holeEndX);
+            Material effectiveCeilingMat = ceilingMaterial != null ? ceilingMaterial : undergroundMaterial;
             if (frontLen > 0.01f)
                 CreateCube(container.transform, "Underground_Ceiling_Front",
                     center: new Vector3(undergroundStartX + frontLen * 0.5f, ceilingY, 0f),
                     size:   new Vector3(frontLen, 0.2f, holeWidth),
-                    mat:    undergroundMaterial,
+                    mat:    effectiveCeilingMat,
                     groundLayer: -1);
             if (backLen > 0.01f)
                 CreateCube(container.transform, "Underground_Ceiling_Back",
                     center: new Vector3(holeEndX + backLen * 0.5f, ceilingY, 0f),
                     size:   new Vector3(backLen, 0.2f, holeWidth),
-                    mat:    undergroundMaterial,
+                    mat:    effectiveCeilingMat,
                     groundLayer: -1);
 
             // 6) 출구 Ramp (지하 끝 → 지상) + 캐릭터 y 자동 보정용 trigger

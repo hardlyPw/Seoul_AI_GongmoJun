@@ -11,6 +11,10 @@ public class PlayerAirborneState : IPlayerState
     private readonly Key[] _qteKeys = { Key.W, Key.A, Key.S, Key.D };
     private Key _currentRequiredKey;
 
+    public Key CurrentRequiredKey => _currentRequiredKey;
+    public int SuccessCount => _qteSuccessCount;
+    public bool IsQTESuccess => _qteSuccessCount >= 5;
+
     public void EnterState(PlayerController player)
     {
         _airTimer = 3f; // 기획 규격인 총 체공 시간 3초 고정
@@ -27,7 +31,7 @@ public class PlayerAirborneState : IPlayerState
     {
         if (SceneManager.GetActiveScene().name != "05_Stage_Bicycle")
         {
-            player.ChangeState(player.IdleState);
+            player.ChangeState(player.WalkState);
             return;
         }
 
@@ -35,7 +39,7 @@ public class PlayerAirborneState : IPlayerState
         if (_airTimer <= 0f)
         {
             Debug.Log($"[QTE] 제한 시간 초과로 묘기 실패!");
-            player.ChangeState(player.IdleState);
+            player.ChangeState(player.WalkState);
             return;
         }
 

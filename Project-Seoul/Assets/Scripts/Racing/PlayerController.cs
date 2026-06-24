@@ -66,7 +66,9 @@ public class PlayerController : MonoBehaviour
     public readonly PlayerRunState RunState = new PlayerRunState();
     public readonly PlayerDashState DashState = new PlayerDashState();
     public readonly PlayerStunState StunState = new PlayerStunState();
-       public readonly PlayerAirborneState AirborneState = new PlayerAirborneState();
+    public readonly PlayerWalkState WalkState = new PlayerWalkState();
+    public readonly PlayerJumpState JumpState = new PlayerJumpState();
+    public readonly PlayerAirborneState AirborneState = new PlayerAirborneState();
     private IPlayerState _currentState;
 
     private Rigidbody _rb;
@@ -120,6 +122,11 @@ public class PlayerController : MonoBehaviour
     public bool IsSprinting => _currentState == RunState;
     public bool IsFallen => _currentState == StunState;
     public bool IsDashing => _currentState == DashState;
+    public bool IsWalking => _currentState == WalkState;
+    public bool IsJumping => _currentState == JumpState;
+    public bool IsAirborne => _currentState == AirborneState;
+    public bool IsGrounded => _isGrounded;
+    public float VerticalSpeed => _velocity.y;
     public int CurrentLane => _currentLane;
 
     public void Initialize(IInputProvider inputProvider) => _input = inputProvider;
@@ -552,6 +559,7 @@ public class PlayerController : MonoBehaviour
             _velocity.y = jumpForce;
             _isGrounded = false;
             _jumpBufferTimer = 0f;
+            ChangeState(JumpState);
         }
     }
 
