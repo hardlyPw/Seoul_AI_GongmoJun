@@ -127,7 +127,6 @@ public class PlayerController : MonoBehaviour
     public bool IsAirborne => _currentState == AirborneState;
     public bool IsGrounded => _isGrounded;
     public float VerticalSpeed => _velocity.y;
-    public bool IsAirborne => _currentState == AirborneState;
     public int CurrentLane => _currentLane;
 
     public void Initialize(IInputProvider inputProvider) => _input = inputProvider;
