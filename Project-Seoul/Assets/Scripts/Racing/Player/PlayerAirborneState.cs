@@ -31,7 +31,7 @@ public class PlayerAirborneState : IPlayerState
     {
         if (SceneManager.GetActiveScene().name != "05_Stage_Bicycle")
         {
-            player.ChangeState(player.IdleState);
+            player.ChangeState(player.WalkState);
             return;
         }
 
@@ -39,7 +39,7 @@ public class PlayerAirborneState : IPlayerState
         if (_airTimer <= 0f)
         {
             Debug.Log($"[QTE] 제한 시간 초과로 묘기 실패!");
-            player.ChangeState(player.IdleState);
+            player.ChangeState(player.WalkState);
             return;
         }
 
