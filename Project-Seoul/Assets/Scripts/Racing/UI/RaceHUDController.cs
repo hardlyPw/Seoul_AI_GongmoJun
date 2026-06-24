@@ -18,11 +18,16 @@ namespace Seoul.Network.Game
         [Header("Settings")]
         [SerializeField] private float refreshInterval = 0.2f;
 
+        [Header("QTE UI (Optional)")]
+        [SerializeField] private TMP_Text qteStateText;
+
         private float _refreshTimer;
         private readonly List<NetworkPlayer> _sorted = new();
 
         private void Update()
         {
+            UpdateQTEUI(); // QTE는 즉각적인 피드백이 중요하므로 타이머와 무관하게 매 프레임 업데이트
+
             _refreshTimer += Time.deltaTime;
             if (_refreshTimer < refreshInterval) return;
             _refreshTimer = 0f;
@@ -30,6 +35,61 @@ namespace Seoul.Network.Game
             UpdateMyScore();
             UpdateScoreboard();
             UpdateWeather();
+        }
+
+        private void UpdateQTEUI()
+        {
+            NetworkPlayer me = null;
+            foreach (var p in NetworkPlayer.All)
+            {
+                if (p == null) continue;
+                if (p.IsOwner) { me = p; break; }
+            }
+            if (me == null) return;
+
+            if (!me.TryGetComponent<PlayerController>(out var player)) return;
+
+            // qteStateText가 없으면 런타임에 Canvas를 찾아 동적으로 생성하여 화면 중앙 상단에 배치
+            if (qteStateText == null)
+            {
+                Canvas canvas = GetComponentInParent<Canvas>();
+                if (canvas == null && myScoreText != null) canvas = myScoreText.GetComponentInParent<Canvas>();
+                if (canvas != null)
+                {
+                    GameObject qteObj = new GameObject("QTE_StateText_Dynamic");
+                    qteObj.transform.SetParent(canvas.transform, false);
+                    var rt = qteObj.AddComponent<RectTransform>();
+                    rt.anchorMin = new Vector2(0.5f, 0.8f);
+                    rt.anchorMax = new Vector2(0.5f, 0.8f);
+                    rt.pivot = new Vector2(0.5f, 0.5f);
+                    rt.anchoredPosition = new Vector2(0f, 0f);
+                    rt.sizeDelta = new Vector2(500f, 300f);
+
+                    var tmp = qteObj.AddComponent<TextMeshProUGUI>();
+                    tmp.fontSize = 36f;
+                    tmp.alignment = TextAlignmentOptions.Center;
+                    tmp.overflowMode = TextOverflowModes.Overflow;
+                    tmp.text = "";
+                    qteStateText = tmp;
+                    Debug.Log("[RaceHUDController] QTE 전용 UI 텍스트 캔버스 중앙 상단에 동적 생성 완료!");
+                }
+            }
+
+            if (qteStateText != null)
+            {
+                if (player.IsFallen) qteStateText.text = "<color=#FF0000>넘어짐!</color>";
+                else if (player.IsAirborne)
+                {
+                    if (player.AirborneState.IsQTESuccess)
+                        qteStateText.text = "<color=#00FF00>QTE 성공!</color>\n<size=28>(+30pt)</size>";
+                    else
+                        qteStateText.text = $"[QTE 묘기]\n입력 키: <color=#FFFF00>{player.AirborneState.CurrentRequiredKey}</color>\n<size=28>성공: {player.AirborneState.SuccessCount}/5</size>";
+                }
+                else
+                {
+                    qteStateText.text = "";
+                }
+            }
         }
 
         private void UpdateWeather()
