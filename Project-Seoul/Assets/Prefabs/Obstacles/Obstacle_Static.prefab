@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 4867285784840699980}
   - component: {fileID: 8699091550866089831}
   - component: {fileID: 6792452401333106588}
+  - component: {fileID: 8689819469922687104}
   - component: {fileID: 2644405555543710137}
   m_Layer: 0
   m_Name: Obstacle_Static
@@ -115,6 +116,31 @@ CapsuleCollider:
   m_Height: 2
   m_Direction: 1
   m_Center: {x: 0.000000059604645, y: 0, z: -0.00000008940697}
+--- !u!114 &8689819469922687104
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6022764667793434950}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
+  GlobalObjectIdHash: 3686353355
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 1
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!114 &2644405555543710137
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -127,5 +153,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 26703511482715046b42328d92d453f8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::StaticObstacle
+  ShowTopMostFoldoutHeaderGroup: 1
   knockDownOnCollision: 1
   laneIndex: 3
