@@ -4,18 +4,17 @@ using UnityEngine;
 // PlayerController의 현재 "상태"를 읽어 애니메이션을 재생하되,
 // 멀티플레이어에서 다른 클라이언트에도 보이도록 상태를 네트워크 동기화한다.
 //
-// 동작 원리:
 //  - 소유자(IsOwner): PlayerController에서 상태를 계산해 재생하고, NetworkVariable에 기록.
-//  - 리모트(비소유자): PlayerController는 로컬에서 시뮬레이션되지 않으므로,
-//    동기화된 NetworkVariable 값을 읽어 같은 애니메이션을 재생.
-//  - 네트워크에 스폰되기 전/비네트워크 테스트: 로컬 단독으로 동작.
+//  - 리모트(비소유자): 동기화된 NetworkVariable 값을 읽어 같은 애니메이션을 재생.
+//  - 스폰 전/비네트워크 테스트: 로컬 단독으로 동작.
 //
+// 플레이어별 모델 교체를 지원하기 위해, 활성 모델의 Animator를 SetAnimator로 갈아끼울 수 있다.
 // NetworkBehaviour이므로 반드시 NetworkObject가 있는 Player 루트에 붙여야 한다.
 [RequireComponent(typeof(PlayerController))]
 public class PlayerAnimator : NetworkBehaviour
 {
     [Header("연결")]
-    [Tooltip("자식 모델의 Animator. 비우면 자식에서 자동으로 찾음.")]
+    [Tooltip("자식 모델의 Animator. 비우면 자식에서 자동으로 찾음. (모델 교체 시 런타임에 갱신됨)")]
     [SerializeField] private Animator animator;
 
     [Header("애니메이션 상태 이름 (Animator 박스 이름과 정확히 일치)")]
@@ -31,10 +30,8 @@ public class PlayerAnimator : NetworkBehaviour
     [Header("전환 부드러움")]
     [SerializeField] private float crossFadeTime = 0.12f;
 
-    // 논리적 애니메이션 종류. int로 네트워크 동기화된다.
     private enum AnimKind { Idle = 0, Walk = 1, Run = 2, Dash = 3, Jump = 4, Airborne = 5, Fallen = 6 }
 
-    // 소유자가 쓰고, 모두가 읽음. (NetworkRaceManager의 NetworkVariable 패턴과 동일)
     private readonly NetworkVariable<int> _netState = new NetworkVariable<int>(
         0,
         NetworkVariableReadPermission.Everyone,
@@ -47,30 +44,32 @@ public class PlayerAnimator : NetworkBehaviour
     {
         _player = GetComponent<PlayerController>();
         if (animator == null) animator = GetComponentInChildren<Animator>();
-        if (animator == null)
-            Debug.LogError("[PlayerAnimator] Animator를 찾지 못했습니다. 자식 모델의 Animator를 연결하세요.");
+    }
+
+    // 플레이어별 모델 교체 시, 활성 모델의 Animator로 갈아끼운다. (NetworkPlayer가 호출)
+    public void SetAnimator(Animator a)
+    {
+        animator = a;
+        _currentAnim = null; // 다음 프레임에 현재 상태를 다시 재생하도록 초기화
     }
 
     private void Update()
     {
         if (animator == null || _player == null) return;
 
-        // 스폰 전(또는 비네트워크 테스트) + 소유자: 로컬에서 상태를 계산해 재생.
         if (!IsSpawned || IsOwner) {
             AnimKind kind = DecideKind();
             PlayByKind(kind);
 
             if (IsSpawned && IsOwner && _netState.Value != (int)kind)
-                _netState.Value = (int)kind; // 다른 클라이언트에 전파
+                _netState.Value = (int)kind;
 
             return;
         }
 
-        // 리모트 플레이어: 동기화된 상태를 그대로 재생.
         PlayByKind((AnimKind)_netState.Value);
     }
 
-    // 우선순위: 넘어짐 > 점프키점프 > 점프대공중 > 대시 > 스프린트 > 걷기 > 대기
     private AnimKind DecideKind()
     {
         if (_player.IsFallen) return AnimKind.Fallen;
