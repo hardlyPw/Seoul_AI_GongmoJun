@@ -22,6 +22,10 @@ namespace Seoul.Network.Game
         [Header("Camera")]
         [SerializeField] private bool attachCameraOnSpawn = true;
 
+        public NetworkVariable<int> Score = new(
+            0,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
 
         public NetworkVariable<bool> HasFinished = new(
             false,
@@ -63,14 +67,17 @@ namespace Seoul.Network.Game
         private float _intermediatePollTimer = 0f;
 
         // 스테이지 진입 시 모든 플레이어 준비 완료 신호를 기다리는 동안 입력을 차단하는 플래그.
-        // LoadNextStageClientRpc 또는 OnNetworkSpawn으로 true, EnableStageInputClientRpc 또는 EnableInputDirect로 false.
-        // ⚠️ static: 같은 클라이언트의 모든 NetworkPlayer 인스턴스가 공유.
-        //    (LoadNextStageClientRpc는 특정 인스턴스에서fb8호스되지만, 플래그는 클라이언트 전체에 적용되어야 함)
         private static bool _waitingForStageStart = false;
 
         // [서버 전용] 현 스테이지에서 준비 완료 신호를 보낸 클라이언트 ID 집합.
-        // static으로 모든 NetworkPlayer 인스턴스가 공유 (서버에 하나만 존재).
         private static readonly HashSet<ulong> _stageReadyClients = new();
+
+        public void AddScore(int amount)
+        {
+            if (!IsServer) return;
+            Score.Value += amount;
+            Debug.Log($"[NetworkPlayer] clientId={OwnerClientId} score={Score.Value} (+{amount})");
+        }
 
         public void MarkFinished(int rank)
         {
@@ -79,6 +86,7 @@ namespace Seoul.Network.Game
             FinishRank.Value = rank;
         }
 
+        // 🌟 [CS1503 해결] GoalTrigger.cs에서 정상적으로 호출할 수 있도록 매개변수 구조 원복
         [ServerRpc(RequireOwnership = false)]
         public void ReportGoalServerRpc(FixedString64Bytes nextScene, ServerRpcParams rpcParams = default)
         {
@@ -90,15 +98,11 @@ namespace Seoul.Network.Game
             }
             if (HasFinished.Value) return;
 
-            if (TryGetComponent<PlayerScore>(out var playerScore))
-            {
-                if (SessionScoreStore.Instance != null)
-                    SessionScoreStore.Instance.SetScore(OwnerClientId, playerScore.Score.Value);
-            }
+            if (SessionScoreStore.Instance != null)
+                SessionScoreStore.Instance.SetScore(OwnerClientId, Score.Value);
 
             // NetworkRaceManager가 살아있고 NGO-spawn된 경우에만 위임 (스테이지 1)
-            bool useRaceManager = NetworkRaceManager.Instance != null
-                                  && NetworkRaceManager.Instance.IsSpawned;
+            bool useRaceManager = NetworkRaceManager.Instance != null && NetworkRaceManager.Instance.IsSpawned;
             if (useRaceManager)
             {
                 NetworkRaceManager.Instance.ReportGoal(OwnerClientId);
@@ -132,47 +136,12 @@ namespace Seoul.Network.Game
                 if (!p.IsFullyFinished.Value) return;
             }
             
-            Debug.Log("[NetworkPlayer] All players fully finished — Sorting scores via PlayerScore and filling Broadcaster.");
-
-            // [수정] 결과 창 집계 시 PlayerScore 기반 정렬 후 Broadcaster에 바인딩
-            var broadcaster = NetworkResultBroadcaster.Instance;
-            if (broadcaster != null && broadcaster.Entries != null)
-            {
-                broadcaster.Entries.Clear();
-
-                var sortedPlayers = new List<NetworkPlayer>(All);
-                sortedPlayers.Sort((a, b) =>
-                {
-                    int scoreA = a.TryGetComponent<PlayerScore>(out var sA) ? sA.Score.Value : 0;
-                    int scoreB = b.TryGetComponent<PlayerScore>(out var sB) ? sB.Score.Value : 0;
-                    return scoreB.CompareTo(scoreA); // 내림차순 정렬
-                });
-
-                for (int i = 0; i < sortedPlayers.Count; i++)
-                {
-                    var p = sortedPlayers[i];
-                    if (p == null) continue;
-
-                    int finalScore = p.TryGetComponent<PlayerScore>(out var s) ? s.Score.Value : 0;
-
-                    ResultEntry entry = new ResultEntry
-                    {
-                        ClientId = p.OwnerClientId,
-                        Score = finalScore,
-                        FinalRank = i + 1
-                    };
-
-                    broadcaster.Entries.Add(entry);
-                }
-            }
-
-            Debug.Log("[NetworkPlayer] Loading Result scene via NGO.");
+            Debug.Log("[NetworkPlayer] All players fully finished — Loading Result scene via NGO.");
             NetworkManager.Singleton.SceneManager.LoadScene(ResultSceneName, LoadSceneMode.Single);
         }
 
         /// <summary>
-        /// 중간 스테이지 전환: 현재 씬의 모든 활성 플레이어가 골인했으면
-        /// 모든 클라이언트에 ClientRpc로 다음 씬 로드 신호를 보냅니다.
+        /// 중간 스테이지 전환: 현재 씬의 모든 활성 플레이어가 골인했으면 다음 씬 로드
         /// </summary>
         private void TryAdvanceToNextStage(string nextScene)
         {
@@ -181,23 +150,18 @@ namespace Seoul.Network.Game
 
             string myScene = CurrentScene.Value.ToString();
 
-            // 현재 씬에서 플레이 중인 모든 플레이어(관전자 제외)가 골인했는지 확인
             foreach (var p in All)
             {
                 if (p == null) continue;
-                if (p.IsFullyFinished.Value) continue;  // 최종 완료 관전자는 제외
+                if (p.IsFullyFinished.Value) continue;  
                 if (p.CurrentScene.Value.ToString() != myScene) continue;
-                if (!p.HasFinished.Value) return;       // 아직 골인 못 한 플레이어 존재
+                if (!p.HasFinished.Value) return;       
             }
 
             Debug.Log($"[NetworkPlayer] All players finished '{myScene}' → loading '{nextScene}'");
             LoadNextStageClientRpc(new FixedString64Bytes(nextScene));
         }
 
-        /// <summary>
-        /// 모든 클라이언트에서 다음 스테이지를 로컬 로드합니다.
-        /// SceneTransition의 페이드 처리가 자동으로 이루어집니다.
-        /// </summary>
         [ClientRpc]
         private void LoadNextStageClientRpc(FixedString64Bytes nextScene)
         {
@@ -206,7 +170,6 @@ namespace Seoul.Network.Game
             _waitingForStageStart = true;
             StopLocalMovementForStageWait();
             
-            // 모든 클라이언트가 로딩을 마칠 때까지 화면이 까만 상태로 대기하도록 설정
             if (SceneTransition.Instance != null)
             {
                 SceneTransition.Instance.ManualFadeIn = true;
@@ -218,23 +181,18 @@ namespace Seoul.Network.Game
         public void RequestStageResetServerRpc(ServerRpcParams rpcParams = default)
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
-            if (IsFullyFinished.Value) return; // 스펙테이터는 리셋하지 않음
+            if (IsFullyFinished.Value) return; 
             HasFinished.Value = false;
             FinishRank.Value = 0;
         }
 
-        /// <summary>
-        /// 스테이지 2/3 전환 시 LocalStageEntry가 호출.
-        /// HasFinished 리셋 후 준비 완료를 서버에 통보하며,
-        /// 모든 플레이어가 준비되면 서버가 EnableStageInputClientRpc를 일괄 발송합니다.
-        /// </summary>
+        // 🌟 [CS1061 해결] LocalStageEntry.cs에서 다음 스테이지 진입 시 호출하는 서버 알림 메서드 원복
         [ServerRpc(RequireOwnership = false)]
         public void RequestReadyServerRpc(ServerRpcParams rpcParams = default)
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
-            if (IsFullyFinished.Value) return; // 스펙테이터는 참여하지 않음
+            if (IsFullyFinished.Value) return; 
 
-            // HasFinished / FinishRank 리셋 (RequestStageResetServerRpc와 동일)
             HasFinished.Value = false;
             FinishRank.Value = 0;
 
@@ -244,34 +202,29 @@ namespace Seoul.Network.Game
             TryBroadcastStageStart();
         }
 
-        /// <summary>
-        /// 모든 활성 플레이어가 준비됐으면 EnableStageInputClientRpc를 전송합니다.
-        /// </summary>
         private void TryBroadcastStageStart()
         {
             if (!IsServer) return;
 
-            // 관전자(IsFullyFinished)를 제외한 모든 플레이어가 준비됐는지 확인
             foreach (var p in All)
             {
                 if (p == null) continue;
                 if (p.IsFullyFinished.Value) continue;
-                if (!_stageReadyClients.Contains(p.OwnerClientId)) return; // 아직 준비 안 됨
+                if (!_stageReadyClients.Contains(p.OwnerClientId)) return; 
             }
 
             Debug.Log("[NetworkPlayer] All players ready — broadcasting stage start.");
             _stageReadyClients.Clear();
             
-            // 네트워크 지연을 극복하기 위해 정확히 0.5초 뒤의 서버 시간을 동시 출발 시간으로 지정합니다.
             double exactStartTime = NetworkManager.Singleton.ServerTime.Time + 0.5;
             
-            // ⚠️ this.EnableStageInputClientRpc() 가 아니라 각 NetworkPlayer 인스턴스에서 호출.
             foreach (var p in All)
             {
                 if (p != null) p.ScheduleExactStartClientRpc(exactStartTime);
             }
         }
 
+        // 🌟 [CS1061 해결] NetworkRaceManager.cs에서 완벽 동시 출발 스케줄링 시 사용하는 RPC 메서드 원복
         [ClientRpc]
         public void ScheduleExactStartClientRpc(double exactStartTime)
         {
@@ -284,7 +237,6 @@ namespace Seoul.Network.Game
 
         private System.Collections.IEnumerator ExactStartRoutine(double exactStartTime)
         {
-            // 완벽한 동시 출발을 위해 서버 시간이 일치할 때까지 대기합니다.
             while (NetworkManager.Singleton.ServerTime.Time < exactStartTime)
             {
                 yield return null;
@@ -309,37 +261,15 @@ namespace Seoul.Network.Game
             CurrentScene.Value = scene;
         }
 
+        [ServerRpc(RequireOwnership = false)]
+        public void ReportLocalScorePickupServerRpc(int amount, ServerRpcParams rpcParams = default)
+        {
+            if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+            if (amount <= 0) return;
+            AddScore(amount);
+        }
 
         // ─── 로컬 로드 씬용 아이템 소비 동기화 ─────────────────
-
-        /// <summary>
-        /// NetworkRaceManager.ForceStartRaceClientRpc에서 호출.
-        /// 지정된 지연 시간(delay)에 맞춰 직접 입력을 활성화합니다.
-        /// </summary>
-        public void ScheduleInputEnable(float delay)
-        {
-            if (!IsOwner) return;
-            if (IsFullyFinished.Value || HasFinished.Value) return;
-
-            if (_startCoroutine != null) StopCoroutine(_startCoroutine);
-            StopLocalMovementForStageWait();
-            _startCoroutine = StartCoroutine(WaitAndEnableInput(delay));
-        }
-
-        private System.Collections.IEnumerator WaitAndEnableInput(float delay)
-        {
-            if (delay > 0f)
-            {
-                // 로컬 클럭(Time.time)을 사용하여 오차 없이 매끄럽게 대기합니다.
-                yield return new WaitForSeconds(delay);
-            }
-
-            // static 플래그 해제 (서버-클라이언트 동시 시작을 위한 차단 해제)
-            _waitingForStageStart = false;
-            Debug.Log($"[NetworkPlayer] Stage start synchronized exact time reached (delay: {delay}) — enabling input.");
-            controller.SetMovementLocked(false);
-            controller.Initialize(new PlayerInputProvider());
-        }
 
         [ServerRpc(RequireOwnership = false)]
         public void ReportConsumedItemServerRpc(FixedString64Bytes sceneName, FixedString64Bytes itemId, ServerRpcParams rpcParams = default)
@@ -350,7 +280,7 @@ namespace Seoul.Network.Game
             string s = sceneName.ToString();
             string id = itemId.ToString();
             bool added = SessionScoreStore.Instance.MarkItemConsumed(s, id);
-            if (!added) return; // 이미 기록된 거면 broadcast 안 함
+            if (!added) return; 
 
             BroadcastItemConsumedClientRpc(sceneName, itemId);
         }
@@ -375,10 +305,7 @@ namespace Seoul.Network.Game
 
             var rpcSend = new ClientRpcParams
             {
-                Send = new ClientRpcSendParams
-                {
-                    TargetClientIds = new[] { rpcParams.Receive.SenderClientId }
-                }
+                Send = new ClientRpcSendParams { TargetClientIds = new[] { rpcParams.Receive.SenderClientId } }
             };
             ReceiveConsumedItemListClientRpc(sceneName, list.ToArray(), rpcSend);
         }
@@ -398,12 +325,16 @@ namespace Seoul.Network.Game
         public override void OnNetworkSpawn()
         {
             if (!All.Contains(this)) All.Add(this);
-
             if (controller == null) controller = GetComponent<PlayerController>();
 
             DontDestroyOnLoad(gameObject);
             CacheVisuals();
 
+            if (IsServer)
+            {
+                var store = SessionScoreStore.Instance;
+                if (store != null) Score.Value = store.GetScore(OwnerClientId);
+            }
 
             if (IsOwner)
             {
@@ -419,9 +350,8 @@ namespace Seoul.Network.Game
                 if (ownerVisualMarker != null) ownerVisualMarker.SetActive(false);
             }
 
-            int currentScore = TryGetComponent<PlayerScore>(out var s) ? s.Score.Value : 0;
-            Debug.Log($"[NetworkPlayer] Spawned. OwnerClientId={OwnerClientId} IsOwner={IsOwner} LocalClientId={NetworkManager.Singleton.LocalClientId} pos={transform.position} restoredScore={currentScore}");
-            
+            Debug.Log($"[NetworkPlayer] Spawned. OwnerClientId={OwnerClientId} IsOwner={IsOwner} LocalClientId={NetworkManager.Singleton.LocalClientId} pos={transform.position} restoredScore={Score.Value}");
+
             if (NetworkRaceManager.Instance != null)
                 NetworkRaceManager.Instance.State.OnValueChanged += OnRaceStateChanged;
 
@@ -430,15 +360,12 @@ namespace Seoul.Network.Game
             IsFullyFinished.OnValueChanged += OnIsFullyFinishedChanged;
             SceneManager.sceneLoaded += OnSceneLoadedLocal;
 
-            // 스테이지 시작 신호(ForceStartRaceClientRpc 또는 EnableStageInputClientRpc)를
-            // 받기 전까지 입력을 차단. 서버가 State=Racing으로 먼저 시작하는 것을 방지.
             _waitingForStageStart = true;
             StopLocalMovementForStageWait();
 
             RefreshInputForLocalState();
             RefreshAllVisibility();
 
-            // 이미 종료 상태로 스폰됐다면(재접속 등) 즉시 스펙테이트
             if (IsOwner && IsFullyFinished.Value)
             {
                 EnterSpectateMode();
@@ -491,15 +418,14 @@ namespace Seoul.Network.Game
 
                 if (_isSpectating)
                 {
-                    // 새 씬 로드 직후 잠시 기다렸다가 스펙테이트 갱신
                     _spectatePollTimer = 0.2f;
                 }
                 else
                 {
-                    // 새 씬이 로드되면 중간 관전을 즉시 해제하고 카메라를 자신에게 복귀
-                    // (LocalStageEntry가 HasFinished를 reset하기 전에 해제하기 위해 여기서도 처리)
                     if (_isIntermediateSpectating)
                         ExitIntermediateSpectateMode();
+                    
+                    // 🌟 핵심 카메라 주권 제어: 자전거 등 3스테이지 진입 시 정밀하게 현재 활성화 씬 메인카메라 할당
                     else if (attachCameraOnSpawn)
                         AttachCameraTo(transform);
                 }
@@ -530,9 +456,9 @@ namespace Seoul.Network.Game
             RefreshInputForLocalState();
             if (!IsOwner) return;
             if (current && !IsFullyFinished.Value)
-                EnterIntermediateSpectateMode();  // 중간 스테이지 골인 → 관전 시작
+                EnterIntermediateSpectateMode();
             else if (!current)
-                ExitIntermediateSpectateMode();   // 새 스테이지 시작(HasFinished 리셋) → 관전 해제
+                ExitIntermediateSpectateMode();
         }
 
         private void OnCurrentSceneChanged(FixedString64Bytes previous, FixedString64Bytes current)
@@ -588,7 +514,7 @@ namespace Seoul.Network.Game
                 if (p == null || p == this) continue;
                 if (p.IsFullyFinished.Value) continue;
                 if (p.CurrentScene.Value.ToString() != myScene) continue;
-                if (p.HasFinished.Value) continue;  // 이미 골인한 플레이어는 건너뜀
+                if (p.HasFinished.Value) continue;
                 target = p;
                 break;
             }
@@ -598,7 +524,6 @@ namespace Seoul.Network.Game
                 Debug.Log($"[NetworkPlayer] Intermediate spectating clientId={target.OwnerClientId}");
                 AttachCameraTo(target.transform);
             }
-            // target이 없으면 카메라 유지 (곧 씬 전환 예정)
         }
 
         // ─── 스펙테이트 ────────────────────────────────────────
@@ -614,7 +539,6 @@ namespace Seoul.Network.Game
 
         private void UpdateSpectateTarget()
         {
-            // 아직 완전히 끝나지 않은 다른 플레이어를 찾는다
             NetworkPlayer target = null;
             foreach (var p in All)
             {
@@ -659,7 +583,6 @@ namespace Seoul.Network.Game
             if (IsFullyFinished.Value)
             {
                 controller.Initialize(new NullInputProvider());
-                controller.SetMovementLocked(true);
                 return;
             }
 
@@ -667,52 +590,22 @@ namespace Seoul.Network.Game
                                    || !NetworkRaceManager.Instance.IsSpawned
                                    || NetworkRaceManager.Instance.State.Value == RaceState.Racing;
 
-            // 대기 중이면 입력 차단 (이제 ExactStartRoutine에서 대기 플래그를 해제합니다)
             if (_waitingForStageStart)
             {
                 controller.Initialize(new NullInputProvider());
-                controller.SetMovementLocked(true);
                 return;
             }
 
             if (racingOrFreeRun && !HasFinished.Value)
-            {
-                controller.SetMovementLocked(false);
                 controller.Initialize(new PlayerInputProvider());
-                // 개발자님의 로컬 환경(듀얼 모니터) 완벽 동시 출발 시각 효과를 위해
-                // 출발 직후 1초간 모든 NetworkTransform의 보간(버퍼)을 강제로 꺼서 즉시 반응하게 만듭니다.
-                StartCoroutine(TemporaryDisableInterpolationRoutine());
-            }
             else
-            {
                 controller.Initialize(new NullInputProvider());
-                controller.SetMovementLocked(true);
-            }
         }
 
         private void StopLocalMovementForStageWait()
         {
             if (!IsOwner || controller == null) return;
             controller.Initialize(new NullInputProvider());
-            controller.SetMovementLocked(true);
-        }
-
-        private System.Collections.IEnumerator TemporaryDisableInterpolationRoutine()
-        {
-            // 모든 플레이어의 NetworkTransform 보간을 끕니다. (100ms 지연 제거)
-            var netTransforms = FindObjectsOfType<Unity.Netcode.Components.NetworkTransform>();
-            foreach (var nt in netTransforms)
-            {
-                nt.Interpolate = false;
-            }
-
-            // 1초 뒤에 다시 부드러운 움직임(보간)을 켭니다.
-            yield return new WaitForSeconds(1.0f);
-
-            foreach (var nt in netTransforms)
-            {
-                if (nt != null) nt.Interpolate = true;
-            }
         }
 
         private void RefreshAllVisibility()
@@ -725,7 +618,6 @@ namespace Seoul.Network.Game
 
         private void UpdateVisibilityVsOwner()
         {
-            // 완전 종료자는 어디서도 안 보임 (관전 중인 유령). 본인 시점에서도 숨김.
             if (IsFullyFinished.Value)
             {
                 SetVisualEnabled(false);
@@ -774,42 +666,67 @@ namespace Seoul.Network.Game
             }
         }
 
-        // ─── 카메라 ────────────────────────────────────────────
+        // ─── 카메라 주권 제어 시스템 ────────────────────────────────────────────
 
         private void AttachCameraTo(Transform t)
         {
-            var mainCam = Camera.main;
-            if (mainCam == null) return;
+            var currentCamera = FindCurrentSceneCamera();
+            if (currentCamera == null) return;
 
-            var follow = mainCam.GetComponent<CameraFollow>();
+            DestroyStaleMainCameras(currentCamera);
+
+            var follow = currentCamera.GetComponent<CameraFollow>();
             if (follow != null)
             {
                 follow.SetTarget(t);
             }
             else
             {
-                mainCam.transform.SetParent(t);
-                mainCam.transform.localPosition = new Vector3(0f, 3f, -6f);
-                mainCam.transform.localRotation = Quaternion.Euler(15f, 0f, 0f);
+                currentCamera.transform.SetParent(t);
+                currentCamera.transform.localPosition = new Vector3(0f, 3f, -6f);
+                currentCamera.transform.localRotation = Quaternion.Euler(15f, 0f, 0f);
             }
         }
 
-        // ─── NetworkPlayer 내부의 QTE 처리 세션 ──────────────────────────────────
+        private static Camera FindCurrentSceneCamera()
+        {
+            var activeScene = SceneManager.GetActiveScene();
+            foreach (var camera in Camera.allCameras)
+            {
+                if (!camera.gameObject.activeInHierarchy) continue;
+                if (!camera.CompareTag("MainCamera")) continue;
+                if (camera.gameObject.scene == activeScene)
+                    return camera;
+            }
+            return Camera.main;
+        }
+
+        private static void DestroyStaleMainCameras(Camera keepCamera)
+        {
+            var activeScene = SceneManager.GetActiveScene();
+            foreach (var camera in Camera.allCameras)
+            {
+                if (camera == keepCamera) continue;
+                if (!camera.CompareTag("MainCamera")) continue;
+                if (camera.gameObject.scene != activeScene)
+                {
+                    Debug.Log($"[NetworkPlayer] Destroying stale MainCamera from scene '{camera.gameObject.scene.name}'.");
+                    Object.Destroy(camera.gameObject);
+                }
+            }
+        }
+
+        // ─── QTE 처리 세션 ──────────────────────────────────
 
         [ServerRpc(RequireOwnership = false)]
         public void RequestQTEResultServerRpc(bool isSuccess, int scoreToAdd, BaseQTE.QteActionType actionType, ServerRpcParams rpcParams = default)
         {
-            // 🌟 구버전 방식인 Receive.SenderClientId로 보안 검증
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             if (IsFullyFinished.Value) return;
 
             if (isSuccess)
             {
-                if (TryGetComponent<PlayerScore>(out var playerScore))
-                {
-                    playerScore.AddScore(scoreToAdd); // ⭕ PlayerScore를 통해 추가
-                }
-                ExecuteQteSuccessAction(actionType);
+                AddScore(scoreToAdd);
             }
             else
             {
@@ -817,19 +734,11 @@ namespace Seoul.Network.Game
             }
         }
 
-        private void ExecuteQteSuccessAction(BaseQTE.QteActionType actionType)
-        {
-            // 성공 시 필요한 기믹별 액션 처리 (가속 등)
-        }
-
-        [ClientRpc] // 🌟 클라이언트 RPC는 기존 규격 유지
+        [ClientRpc]
         private void NotifyPlayerQTEFailureClientRpc(BaseQTE.QteActionType actionType)
         {
             if (controller == null) return;
-
             Debug.Log($"[QTE 실패] Client {OwnerClientId}가 {actionType} 기믹 실패로 스턴 상태에 진입합니다.");
-
-            // 실패 시 확실하게 스턴(넘어짐) 처리
             controller.TriggerFall();
         }
     }

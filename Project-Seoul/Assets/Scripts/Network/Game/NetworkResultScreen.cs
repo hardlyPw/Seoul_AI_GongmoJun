@@ -11,9 +11,9 @@ namespace Seoul.Network.Game
     public class NetworkResultScreen : MonoBehaviour
     {
         [Header("UI")]
-        [SerializeField] private GameObject      panel;
+        [SerializeField] private GameObject panel;
         [SerializeField] private TextMeshProUGUI resultText;
-        [SerializeField] private Button          backToTitleButton;
+        [SerializeField] private Button backToTitleButton;
 
         [Header("Scene")]
         [SerializeField] private string titleSceneName = "01_Title";
@@ -69,13 +69,13 @@ namespace Seoul.Network.Game
                 ? NetworkManager.Singleton.LocalClientId
                 : ulong.MaxValue;
 
-            string[] medals = { "🥇 1위", "🥈 2위", "🥉 3위" };
+            string[] medals = { "1위", "2위", "3위" };
 
             for (int i = 0; i < _broadcaster.Entries.Count; i++)
             {
-                var e        = _broadcaster.Entries[i];
-                string rank  = i < medals.Length ? medals[i] : $"{e.FinalRank}위";
-                string who   = e.ClientId == localId ? $"P{e.ClientId} (You)" : $"P{e.ClientId}";
+                var e = _broadcaster.Entries[i];
+                string rank = i < medals.Length ? medals[i] : $"{e.FinalRank}위";
+                string who = e.ClientId == localId ? $"P{e.ClientId} (You)" : $"P{e.ClientId}";
                 sb.AppendLine($"{rank}  {who}  -  {e.Score}점");
             }
 
