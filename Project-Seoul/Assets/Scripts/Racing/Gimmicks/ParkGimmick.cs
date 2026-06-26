@@ -22,6 +22,13 @@ namespace Seoul.Network.Game
         private ParkWall _leftWall;
         private ParkWall _rightWall;
 
+        private void Awake()
+        {
+            // 배치 보조용 Cube — 에디터에서만 보이게 런타임엔 꺼버린다 (collider 포함).
+            var placementHelper = transform.Find("Cube");
+            if (placementHelper != null) placementHelper.gameObject.SetActive(false);
+        }
+
         public override void OnNetworkSpawn()
         {
             if (!IsServer) return;

@@ -71,6 +71,7 @@ public class MashQTE : BaseQTE
         // J 키 또는 K 키 입력 확인
         if (kb[Key.J].wasPressedThisFrame || kb[Key.K].wasPressedThisFrame)
         {
+            Seoul.SoundManager.Instance.PlaySFX("Ui_button_click1");
             _currentMashCount++;
             Debug.Log($"[{actionType}] J/K 입력 감지! 현재 연타 횟수: {_currentMashCount} / {requiredMashCount}");
 

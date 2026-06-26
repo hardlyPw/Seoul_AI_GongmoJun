@@ -100,6 +100,8 @@ public class PlayerAirborneState : IPlayerState
         {
             if (player.Input.GetQTEKeyDown(key))
             {
+                Seoul.SoundManager.Instance.PlaySFX("Ui_button_click1");
+
                 if (key == _currentRequiredKey)
                 {
                     _qteSuccessCount++;
