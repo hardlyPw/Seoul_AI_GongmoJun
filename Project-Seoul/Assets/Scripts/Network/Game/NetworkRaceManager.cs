@@ -32,6 +32,10 @@ namespace Seoul.Network.Game
         private readonly Dictionary<ulong, NetworkObject> _spawnedPlayers  = new();
         private readonly HashSet<ulong>                  _finishedClients = new();
         private int _nextRank = 1;
+        [Header("Characters")]
+        [SerializeField] private int characterCount = 4;
+        private readonly Dictionary<ulong, int> _characterIndexByClient = new();
+        private int _nextCharacterIndex = 0;
 
         private void Awake()
         {
@@ -206,6 +210,15 @@ namespace Seoul.Network.Game
             // DontDestroyOnLoad와 함께 쓰려면 false여야 함 — true면 NGO가
             // 스폰 시점 씬 핸들을 캐싱해서 그 씬 언로드시 DDOL 무시하고 despawn함.
             netObj.SpawnAsPlayerObject(clientId, false);
+
+            // 접속 순서대로 고정 캐릭터 인덱스 배정 (한 번 정해지면 유지)
+            if (!_characterIndexByClient.TryGetValue(clientId, out int charIndex)) {
+                charIndex = _nextCharacterIndex % Mathf.Max(1, characterCount);
+                _nextCharacterIndex++;
+                _characterIndexByClient[clientId] = charIndex;
+            }
+            var np = go.GetComponent<NetworkPlayer>();
+            if (np != null) np.CharacterIndex.Value = charIndex;
 
             _spawnedPlayers[clientId] = netObj;
             Debug.Log($"[NetworkRaceManager] Spawned player for clientId={clientId} at lane {laneIndex} (pos {spawnPos})");
