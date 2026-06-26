@@ -894,6 +894,21 @@ public class PlayerController : MonoBehaviour
         if (hitT == null) return;
         if (hitT == transform || hitT.IsChildOf(transform)) return;
 
+        var target = hitT.GetComponentInParent<Seoul.Network.Game.OcclusionTarget>();
+        if (target != null && target.Renderers != null)
+        {
+            var targetRenderers = target.Renderers;
+            for (int i = 0; i < targetRenderers.Length; i++)
+            {
+                var r = targetRenderers[i];
+                if (r == null) continue;
+                if (r.transform == transform || r.transform.IsChildOf(transform)) continue;
+
+                _occlusionCurrent.Add(r);
+                if (!_occlusionState.ContainsKey(r)) ApplyOcclusion(r);
+            }
+        }
+
         var rs = hitT.GetComponentsInChildren<Renderer>(includeInactive: false);
         for (int i = 0; i < rs.Length; i++)
         {

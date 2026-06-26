@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Seoul.Network.Game
@@ -91,10 +92,34 @@ namespace Seoul.Network.Game
                  "Transparent shader + alpha < 1 material을 만들어 할당하면 도로가 반투명으로 표시됨.")]
         [SerializeField] private Material extraFadeMaterial;
 
+        [Header("Camera Occlusion Proxy")]
+        [SerializeField] private bool autoBuildNearbyOcclusionProxies = true;
+        [SerializeField] private MeshRenderer[] extraOcclusionRenderers;
+        [SerializeField] private string[] occlusionNameKeywords = { "walkroad", "guardrail" };
+        [SerializeField] private float occlusionSearchXPadding = 2f;
+        [SerializeField] private float occlusionSearchZPadding = 4f;
+        [SerializeField] private float occlusionProxyMinThickness = 0.08f;
+
+        [Header("Road Surface Cutout")]
+        [SerializeField] private bool autoCutRoadSurface = true;
+        [SerializeField] private float roadCutXPadding = 0.25f;
+        [SerializeField] private float roadCutZPadding = 0.15f;
+        [SerializeField] private float roadPatchYOffset = 0.015f;
+        [Tooltip("0이면 holeLength를 사용합니다.")]
+        [SerializeField] private float entranceRoadOpeningLength = 0f;
+        [Tooltip("0이면 exitRampLength를 사용합니다.")]
+        [SerializeField] private float exitRoadOpeningLength = 0f;
+        [SerializeField] private Material roadPatchMaterial;
+
         private const string ContainerName = "_GeneratedVisuals";
         private static Material s_RuntimeFallbackMaterial;
+        private readonly Dictionary<MeshRenderer, bool> _roadRendererEnabledState = new();
 
         private void OnEnable() => Rebuild();
+
+        private void OnDisable() => RestoreRoadRenderers();
+
+        private void OnDestroy() => RestoreRoadRenderers();
 
 #if UNITY_EDITOR
         private void OnValidate()
@@ -116,6 +141,8 @@ namespace Seoul.Network.Game
             // Prefab Stage(편집 중)나 씬 인스턴스는 IsPersistent=false라 정상 동작.
             if (UnityEditor.EditorUtility.IsPersistent(this)) return;
 #endif
+            RestoreRoadRenderers();
+
             var existing = transform.Find(ContainerName);
             if (existing != null) DestroySafe(existing.gameObject);
 
@@ -174,6 +201,27 @@ namespace Seoul.Network.Game
             }
             // 양옆 합치면 lane 2칸 폭.
             float sideMarginBoth = sideLaneMargin * 2f;
+
+            float entranceOpeningLength = entranceRoadOpeningLength > 0.01f
+                ? entranceRoadOpeningLength
+                : holeLength;
+            float exitOpeningLength = exitRoadOpeningLength > 0.01f
+                ? exitRoadOpeningLength
+                : exitRampLength;
+            float entranceOpeningEndX = holeStartX + entranceOpeningLength;
+            float exitOpeningStartX = Mathf.Max(holeEndX, undergroundEndX - exitOpeningLength);
+
+            BuildRoadSurfaceCutouts(
+                container.transform,
+                holeWidth,
+                new Vector2(holeStartX, entranceOpeningEndX),
+                new Vector2(exitOpeningStartX, undergroundEndX));
+
+            BuildNearbyOcclusionProxies(
+                container.transform,
+                undergroundStartX,
+                undergroundEndX,
+                holeWidth + sideMarginBoth);
 
             // (Hole_Visual 제거 — 도로가 반투명화되면 hole 영역이 자연스럽게 보임)
 
@@ -289,7 +337,8 @@ namespace Seoul.Network.Game
             // 5) 지하 천장 (도로 밑면 분위기 — 구멍 영역은 비움)
             float ceilingY = -0.3f;
             float frontLen = Mathf.Max(0f, holeStartX - undergroundStartX);
-            float backLen  = Mathf.Max(0f, undergroundEndX - holeEndX);
+            float ceilingBackEndX = Mathf.Max(holeEndX, exitOpeningStartX);
+            float backLen  = Mathf.Max(0f, ceilingBackEndX - holeEndX);
             Material effectiveCeilingMat = ceilingMaterial != null ? ceilingMaterial : undergroundMaterial;
             if (frontLen > 0.01f)
                 CreateCube(container.transform, "Underground_Ceiling_Front",
@@ -463,6 +512,214 @@ namespace Seoul.Network.Game
         // ── 헬퍼 ──────────────────────────────
 
         // groundLayer < 0 이면 시각 only (collider 제거). >= 0 이면 해당 layer로 두어 SphereCast가 잡게 함.
+        private void BuildNearbyOcclusionProxies(Transform parent, float localStartX, float localEndX, float widthZ)
+        {
+            var targets = new HashSet<MeshRenderer>();
+
+            if (extraOcclusionRenderers != null)
+            {
+                foreach (var renderer in extraOcclusionRenderers)
+                {
+                    if (renderer != null)
+                        targets.Add(renderer);
+                }
+            }
+
+            if (autoBuildNearbyOcclusionProxies)
+            {
+                float minLocalX = Mathf.Min(localStartX, localEndX) - occlusionSearchXPadding;
+                float maxLocalX = Mathf.Max(localStartX, localEndX) + occlusionSearchXPadding;
+                var minWorld = transform.TransformPoint(new Vector3(minLocalX, 0f, 0f));
+                var maxWorld = transform.TransformPoint(new Vector3(maxLocalX, 0f, 0f));
+                float minX = Mathf.Min(minWorld.x, maxWorld.x);
+                float maxX = Mathf.Max(minWorld.x, maxWorld.x);
+                float halfZ = widthZ * 0.5f + occlusionSearchZPadding;
+                float minZ = transform.position.z - halfZ;
+                float maxZ = transform.position.z + halfZ;
+
+                var sceneRenderers = FindObjectsByType<MeshRenderer>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+                foreach (var renderer in sceneRenderers)
+                {
+                    if (renderer == null) continue;
+                    if (renderer.transform == transform || renderer.transform.IsChildOf(transform)) continue;
+                    if (!HasOcclusionKeyword(renderer.transform)) continue;
+
+                    var bounds = renderer.bounds;
+                    if (bounds.max.x < minX || bounds.min.x > maxX) continue;
+                    if (bounds.max.z < minZ || bounds.min.z > maxZ) continue;
+                    targets.Add(renderer);
+                }
+            }
+
+            int index = 0;
+            foreach (var renderer in targets)
+            {
+                if (renderer == null) continue;
+                CreateOcclusionProxy(parent, renderer, index++);
+            }
+        }
+
+        private bool HasOcclusionKeyword(Transform t)
+        {
+            if (occlusionNameKeywords == null || occlusionNameKeywords.Length == 0) return false;
+
+            for (var current = t; current != null; current = current.parent)
+            {
+                string objectName = current.name;
+                for (int i = 0; i < occlusionNameKeywords.Length; i++)
+                {
+                    string keyword = occlusionNameKeywords[i];
+                    if (string.IsNullOrWhiteSpace(keyword)) continue;
+                    if (objectName.IndexOf(keyword, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void CreateOcclusionProxy(Transform parent, MeshRenderer renderer, int index)
+        {
+            var bounds = renderer.bounds;
+            if (bounds.size.sqrMagnitude <= 0.0001f) return;
+
+            var go = new GameObject($"OcclusionProxy_{renderer.name}_{index}");
+            go.transform.SetParent(parent, true);
+            go.transform.position = bounds.center;
+            go.layer = renderer.gameObject.layer;
+            go.hideFlags = HideFlags.DontSave;
+
+            var col = go.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(
+                Mathf.Max(bounds.size.x, occlusionProxyMinThickness),
+                Mathf.Max(bounds.size.y, occlusionProxyMinThickness),
+                Mathf.Max(bounds.size.z, occlusionProxyMinThickness));
+
+            var target = go.AddComponent<OcclusionTarget>();
+            target.Renderers = new Renderer[] { renderer };
+        }
+
+        private void BuildRoadSurfaceCutouts(Transform parent, float cutWidthZ, params Vector2[] localCutRanges)
+        {
+            if (!autoCutRoadSurface) return;
+            if (extraHideRenderers == null || extraHideRenderers.Length == 0) return;
+            if (localCutRanges == null || localCutRanges.Length == 0) return;
+
+            float cutHalfZ = cutWidthZ * 0.5f + roadCutZPadding;
+            float cutMinZ = transform.position.z - cutHalfZ;
+            float cutMaxZ = transform.position.z + cutHalfZ;
+            var worldCutRanges = new List<Vector2>(localCutRanges.Length);
+
+            foreach (var localRange in localCutRanges)
+            {
+                var a = transform.TransformPoint(new Vector3(localRange.x, 0f, 0f));
+                var b = transform.TransformPoint(new Vector3(localRange.y, 0f, 0f));
+                float minX = Mathf.Min(a.x, b.x) - roadCutXPadding;
+                float maxX = Mathf.Max(a.x, b.x) + roadCutXPadding;
+                if (maxX - minX > 0.01f)
+                    worldCutRanges.Add(new Vector2(minX, maxX));
+            }
+
+            if (worldCutRanges.Count == 0) return;
+            worldCutRanges.Sort((a, b) => a.x.CompareTo(b.x));
+
+            foreach (var source in extraHideRenderers)
+            {
+                if (source == null) continue;
+
+                var bounds = source.bounds;
+                if (bounds.size.x <= 0.01f || bounds.size.z <= 0.01f) continue;
+                if (cutMaxZ <= bounds.min.z || cutMinZ >= bounds.max.z) continue;
+
+                var clippedRanges = new List<Vector2>(worldCutRanges.Count);
+                foreach (var range in worldCutRanges)
+                {
+                    float minX = Mathf.Clamp(range.x, bounds.min.x, bounds.max.x);
+                    float maxX = Mathf.Clamp(range.y, bounds.min.x, bounds.max.x);
+                    if (maxX - minX > 0.01f)
+                        clippedRanges.Add(new Vector2(minX, maxX));
+                }
+
+                if (clippedRanges.Count == 0) continue;
+
+                HideSourceRoadRenderer(source);
+
+                float innerMinZ = Mathf.Clamp(cutMinZ, bounds.min.z, bounds.max.z);
+                float innerMaxZ = Mathf.Clamp(cutMaxZ, bounds.min.z, bounds.max.z);
+                float surfaceY = bounds.max.y + roadPatchYOffset;
+                var patchMat = roadPatchMaterial != null ? roadPatchMaterial : source.sharedMaterial;
+                int patchIndex = 0;
+                float cursorX = bounds.min.x;
+
+                foreach (var range in clippedRanges)
+                {
+                    float minX = Mathf.Max(range.x, cursorX);
+                    float maxX = Mathf.Max(minX, range.y);
+                    if (minX > cursorX + 0.01f)
+                        CreateRoadPatch(parent, source, patchIndex++, cursorX, minX, bounds.min.z, bounds.max.z, surfaceY, patchMat);
+
+                    if (maxX - minX > 0.01f)
+                    {
+                        CreateRoadPatch(parent, source, patchIndex++, minX, maxX, bounds.min.z, innerMinZ, surfaceY, patchMat);
+                        CreateRoadPatch(parent, source, patchIndex++, minX, maxX, innerMaxZ, bounds.max.z, surfaceY, patchMat);
+                    }
+
+                    cursorX = Mathf.Max(cursorX, maxX);
+                }
+
+                if (bounds.max.x > cursorX + 0.01f)
+                    CreateRoadPatch(parent, source, patchIndex, cursorX, bounds.max.x, bounds.min.z, bounds.max.z, surfaceY, patchMat);
+            }
+        }
+
+        private void HideSourceRoadRenderer(MeshRenderer source)
+        {
+            if (!Application.isPlaying) return;
+            if (!_roadRendererEnabledState.ContainsKey(source))
+                _roadRendererEnabledState.Add(source, source.enabled);
+            source.enabled = false;
+        }
+
+        private void RestoreRoadRenderers()
+        {
+            foreach (var pair in _roadRendererEnabledState)
+            {
+                if (pair.Key != null)
+                    pair.Key.enabled = pair.Value;
+            }
+
+            _roadRendererEnabledState.Clear();
+        }
+
+        private void CreateRoadPatch(
+            Transform parent,
+            MeshRenderer source,
+            int index,
+            float minX,
+            float maxX,
+            float minZ,
+            float maxZ,
+            float y,
+            Material mat)
+        {
+            if (maxX - minX <= 0.01f || maxZ - minZ <= 0.01f) return;
+
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = $"RoadPatch_{source.name}_{index}";
+            go.transform.position = new Vector3((minX + maxX) * 0.5f, y, (minZ + maxZ) * 0.5f);
+            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            go.transform.localScale = new Vector3(maxX - minX, maxZ - minZ, 1f);
+            go.transform.SetParent(parent, true);
+            go.layer = source.gameObject.layer;
+            if (go.TryGetComponent<Collider>(out var col)) DestroySafe(col);
+            var trigger = go.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.size = new Vector3(1f, 1f, 0.05f);
+            ApplyMat(go, mat);
+            go.hideFlags = HideFlags.DontSave;
+        }
+
         private void CreateCube(Transform parent, string n, Vector3 center, Vector3 size, Material mat, int groundLayer)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
