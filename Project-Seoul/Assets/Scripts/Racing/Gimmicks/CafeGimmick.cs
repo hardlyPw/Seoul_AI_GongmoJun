@@ -133,14 +133,26 @@ namespace Seoul.Network.Game
 
             Seoul.SoundManager.Instance.PlaySFX("cafe_door");
 
+            // ─── [수정] 이미 획득한 상태가 아닐 때만 가이드 UI 표시 ───
+            if (!(onePickupPerVisit && _pickedThisVisit.Contains(player)))
+            {
+                CafeGimmickUI.Instance?.ShowPrompt(itemToGrant.ToString());
+            }
+
             Action handler = () => TryGrantItem(player);
             _handlers[player] = handler;
             player.OnInteract += handler;
         }
-
         public void OnPlayerExit(PlayerController player)
         {
             if (player == null) return;
+
+            // ─── [수정] 본인 클라이언트가 나갈 때 UI 가이드 숨김 ───
+            if (player.TryGetComponent<NetworkObject>(out var no) && no.IsOwner)
+            {
+                CafeGimmickUI.Instance?.HidePrompt();
+            }
+
             if (_handlers.TryGetValue(player, out var h))
             {
                 player.OnInteract -= h;
@@ -151,6 +163,9 @@ namespace Seoul.Network.Game
 
         private void OnDisable()
         {
+            // 오브젝트가 비활성화될 때 가이드 UI가 켜져 있다면 숨김
+            CafeGimmickUI.Instance?.HidePrompt();
+
             foreach (var kv in _handlers)
             {
                 if (kv.Key != null) kv.Key.OnInteract -= kv.Value;
@@ -168,6 +183,8 @@ namespace Seoul.Network.Game
 
             inv.TryPickupLocal(itemToGrant);
             _pickedThisVisit.Add(player);
+
+            CafeGimmickUI.Instance?.HidePrompt();
         }
     }
 }
