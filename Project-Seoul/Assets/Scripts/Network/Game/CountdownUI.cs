@@ -10,6 +10,7 @@ namespace Seoul.Network.Game
 
         private float _goTimer;
         private bool  _showingGo;
+        private bool  _playedCountdown;
 
         private void Reset()
         {
@@ -30,12 +31,18 @@ namespace Seoul.Network.Game
             switch (state)
             {
                 case RaceState.Countdown:
+                    if (!_playedCountdown)
+                    {
+                        Seoul.SoundManager.Instance.PlaySFX("countdown_full");
+                        _playedCountdown = true;
+                    }
                     int displayed = Mathf.CeilToInt(remain);
                     SetText(displayed > 0 ? displayed.ToString() : "GO!");
                     _showingGo = false;
                     break;
 
                 case RaceState.Racing:
+                    _playedCountdown = false;
                     if (!_showingGo)
                     {
                         SetText("GO!");
@@ -50,6 +57,7 @@ namespace Seoul.Network.Game
                     break;
 
                 default:
+                    _playedCountdown = false;
                     SetText(string.Empty);
                     break;
             }

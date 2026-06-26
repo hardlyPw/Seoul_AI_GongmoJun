@@ -16,6 +16,14 @@ public class ScoreItem : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         if (!other.TryGetComponent<PlayerController>(out var player)) return;
+        if (other.TryGetComponent<Unity.Netcode.NetworkObject>(out var no))
+        {
+            if (no.IsOwner) Seoul.SoundManager.Instance.PlaySFX("get_coin");
+        }
+        else
+        {
+            Seoul.SoundManager.Instance.PlaySFX("get_coin");
+        }
         ScoreManager.Instance?.AddScore(player, scoreValue);
         gameObject.SetActive(false);
     }

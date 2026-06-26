@@ -38,6 +38,16 @@ public class ItemBox : MonoBehaviour
             : new KickboardItemEffect();
 
         if (inventory.TryPickup(item))
+        {
+            if (other.TryGetComponent<Unity.Netcode.NetworkObject>(out var no))
+            {
+                if (no.IsOwner) Seoul.SoundManager.Instance.PlaySFX("get_item");
+            }
+            else
+            {
+                Seoul.SoundManager.Instance.PlaySFX("get_item");
+            }
             gameObject.SetActive(false);
+        }
     }
 }

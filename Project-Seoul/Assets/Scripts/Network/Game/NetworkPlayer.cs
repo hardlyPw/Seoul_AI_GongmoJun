@@ -19,6 +19,10 @@ namespace Seoul.Network.Game
         [SerializeField] private PlayerController controller;
         [SerializeField] private GameObject ownerVisualMarker;
 
+        [Header("Character Models")]
+        // 인덱스 순서 = 캐릭터 번호. 0번,1번... 순으로 모델을 넣으세요.
+        [SerializeField] private GameObject[] characterModels;
+
         [Header("Camera")]
         [SerializeField] private bool attachCameraOnSpawn = true;
 
@@ -47,6 +51,12 @@ namespace Seoul.Network.Game
         // 스펙테이트(관전) 진입 및 결과 화면 진행의 신호로 쓰임.
         public NetworkVariable<bool> IsFullyFinished = new(
             false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+
+        // 플레이어별 고정 캐릭터 번호. 서버가 스폰 시 한 번 정함. 모두가 같은 모델을 보도록 동기화.
+        public NetworkVariable<int> CharacterIndex = new(
+            0,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
 
@@ -99,8 +109,7 @@ namespace Seoul.Network.Game
         public void ReportGoalServerRpc(FixedString64Bytes nextScene, ServerRpcParams rpcParams = default)
         {
             ulong senderId = rpcParams.Receive.SenderClientId;
-            if (senderId != OwnerClientId)
-            {
+            if (senderId != OwnerClientId) {
                 Debug.LogWarning($"[NetworkPlayer] ReportGoalServerRpc rejected: sender={senderId} owner={OwnerClientId}");
                 return;
             }
@@ -111,24 +120,20 @@ namespace Seoul.Network.Game
 
             // NetworkRaceManager가 살아있고 NGO-spawn된 경우에만 위임 (스테이지 1)
             bool useRaceManager = NetworkRaceManager.Instance != null && NetworkRaceManager.Instance.IsSpawned;
-            if (useRaceManager)
-            {
+            if (useRaceManager) {
                 NetworkRaceManager.Instance.ReportGoal(OwnerClientId);
             }
-            else
-            {
+            else {
                 // 스테이지 2/3에는 NetworkRaceManager가 없음 — 직접 마무리
                 MarkFinished(0);
             }
 
-            if (CurrentScene.Value.ToString() == FinalStageName)
-            {
+            if (CurrentScene.Value.ToString() == FinalStageName) {
                 // 최종 스테이지 골인 — IsFullyFinished 처리 후 결과 화면으로
                 IsFullyFinished.Value = true;
                 TryAdvanceToResult();
             }
-            else
-            {
+            else {
                 // 중간 스테이지 골인 — 현재 씬 전체 플레이어 골인 시 ClientRpc로 일괄 전환
                 TryAdvanceToNextStage(nextScene.ToString());
             }
@@ -138,12 +143,11 @@ namespace Seoul.Network.Game
         {
             if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsServer) return;
             if (All.Count == 0) return;
-            foreach (var p in All)
-            {
+            foreach (var p in All) {
                 if (p == null) continue;
                 if (!p.IsFullyFinished.Value) return;
             }
-            
+
             Debug.Log("[NetworkPlayer] All players fully finished — Loading Result scene via NGO.");
             NetworkManager.Singleton.SceneManager.LoadScene(ResultSceneName, LoadSceneMode.Single);
         }
@@ -158,12 +162,11 @@ namespace Seoul.Network.Game
 
             string myScene = CurrentScene.Value.ToString();
 
-            foreach (var p in All)
-            {
+            foreach (var p in All) {
                 if (p == null) continue;
-                if (p.IsFullyFinished.Value) continue;  
+                if (p.IsFullyFinished.Value) continue;
                 if (p.CurrentScene.Value.ToString() != myScene) continue;
-                if (!p.HasFinished.Value) return;       
+                if (!p.HasFinished.Value) return;
             }
 
             Debug.Log($"[NetworkPlayer] All players finished '{myScene}' → loading '{nextScene}'");
@@ -177,9 +180,8 @@ namespace Seoul.Network.Game
             if (IsServer) _stageReadyClients.Clear();
             _waitingForStageStart = true;
             StopLocalMovementForStageWait();
-            
-            if (SceneTransition.Instance != null)
-            {
+
+            if (SceneTransition.Instance != null) {
                 SceneTransition.Instance.ManualFadeIn = true;
             }
             SceneTransition.Load(nextScene.ToString());
@@ -189,7 +191,7 @@ namespace Seoul.Network.Game
         public void RequestStageResetServerRpc(ServerRpcParams rpcParams = default)
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
-            if (IsFullyFinished.Value) return; 
+            if (IsFullyFinished.Value) return;
             HasFinished.Value = false;
             FinishRank.Value = 0;
         }
@@ -199,7 +201,7 @@ namespace Seoul.Network.Game
         public void RequestReadyServerRpc(ServerRpcParams rpcParams = default)
         {
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
-            if (IsFullyFinished.Value) return; 
+            if (IsFullyFinished.Value) return;
 
             HasFinished.Value = false;
             FinishRank.Value = 0;
@@ -214,20 +216,18 @@ namespace Seoul.Network.Game
         {
             if (!IsServer) return;
 
-            foreach (var p in All)
-            {
+            foreach (var p in All) {
                 if (p == null) continue;
                 if (p.IsFullyFinished.Value) continue;
-                if (!_stageReadyClients.Contains(p.OwnerClientId)) return; 
+                if (!_stageReadyClients.Contains(p.OwnerClientId)) return;
             }
 
             Debug.Log("[NetworkPlayer] All players ready — broadcasting stage start.");
             _stageReadyClients.Clear();
-            
+
             double exactStartTime = NetworkManager.Singleton.ServerTime.Time + 0.5;
-            
-            foreach (var p in All)
-            {
+
+            foreach (var p in All) {
                 if (p != null) p.ScheduleExactStartClientRpc(exactStartTime);
             }
         }
@@ -245,18 +245,16 @@ namespace Seoul.Network.Game
 
         private System.Collections.IEnumerator ExactStartRoutine(double exactStartTime)
         {
-            while (NetworkManager.Singleton.ServerTime.Time < exactStartTime)
-            {
+            while (NetworkManager.Singleton.ServerTime.Time < exactStartTime) {
                 yield return null;
             }
 
             _waitingForStageStart = false;
-            
-            if (SceneTransition.Instance != null && SceneTransition.Instance.ManualFadeIn)
-            {
+
+            if (SceneTransition.Instance != null && SceneTransition.Instance.ManualFadeIn) {
                 SceneTransition.Instance.TriggerFadeIn();
             }
-            
+
             Debug.Log($"[NetworkPlayer] PERFECT SYNC START at ServerTime: {NetworkManager.Singleton.ServerTime.Time}");
             controller.SetMovementLocked(false);
             RefreshInputForLocalState();
@@ -288,7 +286,7 @@ namespace Seoul.Network.Game
             string s = sceneName.ToString();
             string id = itemId.ToString();
             bool added = SessionScoreStore.Instance.MarkItemConsumed(s, id);
-            if (!added) return; 
+            if (!added) return;
 
             BroadcastItemConsumedClientRpc(sceneName, itemId);
         }
@@ -322,8 +320,7 @@ namespace Seoul.Network.Game
         private void ReceiveConsumedItemListClientRpc(FixedString64Bytes sceneName, FixedString64Bytes[] ids, ClientRpcParams rpcParams = default)
         {
             string s = sceneName.ToString();
-            for (int i = 0; i < ids.Length; i++)
-            {
+            for (int i = 0; i < ids.Length; i++) {
                 StageItemSync.RaiseItemConsumed(s, ids[i].ToString());
             }
         }
@@ -338,8 +335,10 @@ namespace Seoul.Network.Game
             DontDestroyOnLoad(gameObject);
             CacheVisuals();
 
-            if (IsServer)
-            {
+            CharacterIndex.OnValueChanged += OnCharacterIndexChanged;
+            ApplyCharacterModel(CharacterIndex.Value);
+
+            if (IsServer) {
                 var store = SessionScoreStore.Instance;
                 if (store != null)
                 {
@@ -349,16 +348,14 @@ namespace Seoul.Network.Game
                 }
             }
 
-            if (IsOwner)
-            {
+            if (IsOwner) {
                 controller.Initialize(new NullInputProvider());
                 controller.ResetMovementState();
                 if (ownerVisualMarker != null) ownerVisualMarker.SetActive(true);
                 if (attachCameraOnSpawn) AttachCameraTo(transform);
                 ReportActiveSceneToServer();
             }
-            else
-            {
+            else {
                 controller.Initialize(new NullInputProvider());
                 if (ownerVisualMarker != null) ownerVisualMarker.SetActive(false);
             }
@@ -379,8 +376,7 @@ namespace Seoul.Network.Game
             RefreshInputForLocalState();
             RefreshAllVisibility();
 
-            if (IsOwner && IsFullyFinished.Value)
-            {
+            if (IsOwner && IsFullyFinished.Value) {
                 EnterSpectateMode();
             }
         }
@@ -388,6 +384,8 @@ namespace Seoul.Network.Game
         public override void OnNetworkDespawn()
         {
             All.Remove(this);
+
+            CharacterIndex.OnValueChanged -= OnCharacterIndexChanged;
 
             if (NetworkRaceManager.Instance != null)
                 NetworkRaceManager.Instance.State.OnValueChanged -= OnRaceStateChanged;
@@ -402,21 +400,17 @@ namespace Seoul.Network.Game
         {
             if (!IsOwner) return;
 
-            if (_isSpectating)
-            {
+            if (_isSpectating) {
                 _spectatePollTimer -= Time.deltaTime;
-                if (_spectatePollTimer <= 0f)
-                {
+                if (_spectatePollTimer <= 0f) {
                     _spectatePollTimer = SpectatePollInterval;
                     UpdateSpectateTarget();
                 }
             }
 
-            if (_isIntermediateSpectating)
-            {
+            if (_isIntermediateSpectating) {
                 _intermediatePollTimer -= Time.deltaTime;
-                if (_intermediatePollTimer <= 0f)
-                {
+                if (_intermediatePollTimer <= 0f) {
                     _intermediatePollTimer = SpectatePollInterval;
                     UpdateIntermediateSpectateTarget();
                 }
@@ -432,27 +426,23 @@ namespace Seoul.Network.Game
 
         private void OnSceneLoadedLocal(Scene scene, LoadSceneMode mode)
         {
-            if (IsOwner)
-            {
+            if (IsOwner) {
                 ReportActiveSceneToServer();
 
-                if (_isSpectating)
-                {
+                if (_isSpectating) {
                     _spectatePollTimer = 0.2f;
                 }
-                else
-                {
+                else {
                     if (_isIntermediateSpectating)
                         ExitIntermediateSpectateMode();
-                    
+
                     // 🌟 핵심 카메라 주권 제어: 자전거 등 3스테이지 진입 시 정밀하게 현재 활성화 씬 메인카메라 할당
                     else if (attachCameraOnSpawn)
                         AttachCameraTo(transform);
                 }
             }
 
-            if (NetworkRaceManager.Instance != null)
-            {
+            if (NetworkRaceManager.Instance != null) {
                 NetworkRaceManager.Instance.State.OnValueChanged -= OnRaceStateChanged;
                 NetworkRaceManager.Instance.State.OnValueChanged += OnRaceStateChanged;
             }
@@ -483,15 +473,12 @@ namespace Seoul.Network.Game
 
         private void OnCurrentSceneChanged(FixedString64Bytes previous, FixedString64Bytes current)
         {
-            if (IsOwner)
-            {
-                foreach (var p in All)
-                {
+            if (IsOwner) {
+                foreach (var p in All) {
                     if (p != null && p != this) p.UpdateVisibilityVsOwner();
                 }
             }
-            else
-            {
+            else {
                 UpdateVisibilityVsOwner();
             }
         }
@@ -500,8 +487,7 @@ namespace Seoul.Network.Game
         {
             RefreshAllVisibility();
             RefreshInputForLocalState();
-            if (current && IsOwner)
-            {
+            if (current && IsOwner) {
                 EnterSpectateMode();
             }
         }
@@ -529,8 +515,7 @@ namespace Seoul.Network.Game
         {
             string myScene = SceneManager.GetActiveScene().name;
             NetworkPlayer target = null;
-            foreach (var p in All)
-            {
+            foreach (var p in All) {
                 if (p == null || p == this) continue;
                 if (p.IsFullyFinished.Value) continue;
                 if (p.CurrentScene.Value.ToString() != myScene) continue;
@@ -539,8 +524,7 @@ namespace Seoul.Network.Game
                 break;
             }
 
-            if (target != null)
-            {
+            if (target != null) {
                 Debug.Log($"[NetworkPlayer] Intermediate spectating clientId={target.OwnerClientId}");
                 AttachCameraTo(target.transform);
             }
@@ -560,22 +544,19 @@ namespace Seoul.Network.Game
         private void UpdateSpectateTarget()
         {
             NetworkPlayer target = null;
-            foreach (var p in All)
-            {
+            foreach (var p in All) {
                 if (p == null || p == this) continue;
                 if (p.IsFullyFinished.Value) continue;
                 target = p;
                 break;
             }
 
-            if (target == null)
-            {
+            if (target == null) {
                 _spectateTarget = null;
                 return;
             }
 
-            if (target != _spectateTarget)
-            {
+            if (target != _spectateTarget) {
                 _spectateTarget = target;
                 Debug.Log($"[NetworkPlayer] Spectating clientId={target.OwnerClientId}");
             }
@@ -584,8 +565,7 @@ namespace Seoul.Network.Game
             if (string.IsNullOrEmpty(targetScene)) return;
 
             string myScene = SceneManager.GetActiveScene().name;
-            if (targetScene != myScene)
-            {
+            if (targetScene != myScene) {
                 Debug.Log($"[NetworkPlayer] Following target into scene '{targetScene}'");
                 SceneTransition.Load(targetScene);
                 return;
@@ -600,8 +580,7 @@ namespace Seoul.Network.Game
         {
             if (!IsOwner) return;
 
-            if (IsFullyFinished.Value)
-            {
+            if (IsFullyFinished.Value) {
                 controller.Initialize(new NullInputProvider());
                 return;
             }
@@ -610,8 +589,7 @@ namespace Seoul.Network.Game
                                    || !NetworkRaceManager.Instance.IsSpawned
                                    || NetworkRaceManager.Instance.State.Value == RaceState.Racing;
 
-            if (_waitingForStageStart)
-            {
+            if (_waitingForStageStart) {
                 controller.Initialize(new NullInputProvider());
                 return;
             }
@@ -630,29 +608,25 @@ namespace Seoul.Network.Game
 
         private void RefreshAllVisibility()
         {
-            foreach (var p in All)
-            {
+            foreach (var p in All) {
                 if (p != null) p.UpdateVisibilityVsOwner();
             }
         }
 
         private void UpdateVisibilityVsOwner()
         {
-            if (IsFullyFinished.Value)
-            {
+            if (IsFullyFinished.Value) {
                 SetVisualEnabled(false);
                 return;
             }
 
-            if (IsOwner)
-            {
+            if (IsOwner) {
                 SetVisualEnabled(true);
                 return;
             }
 
             NetworkPlayer localOwner = null;
-            foreach (var p in All)
-            {
+            foreach (var p in All) {
                 if (p != null && p.IsOwner) { localOwner = p; break; }
             }
 
@@ -661,6 +635,34 @@ namespace Seoul.Network.Game
                           && CurrentScene.Value.Length > 0;
 
             SetVisualEnabled(sameScene);
+        }
+
+        private void OnCharacterIndexChanged(int previous, int current)
+        {
+            ApplyCharacterModel(current);
+        }
+
+        // 자기 인덱스에 맞는 모델만 켜고, 그 모델의 Animator를 PlayerAnimator에 연결한다.
+        private void ApplyCharacterModel(int index)
+        {
+            if (characterModels == null || characterModels.Length == 0) return;
+
+            GameObject active = null;
+            for (int i = 0; i < characterModels.Length; i++) {
+                if (characterModels[i] == null) continue;
+                bool on = (i == index);
+                characterModels[i].SetActive(on);
+                if (on) active = characterModels[i];
+            }
+
+            if (active != null) {
+                var pa = GetComponent<PlayerAnimator>();
+                var anim = active.GetComponentInChildren<Animator>();
+                if (pa != null && anim != null) pa.SetAnimator(anim);
+            }
+
+            // 보이는 메시가 바뀌었으니 가시성 캐시 갱신
+            CacheVisuals();
         }
 
         private void CacheVisuals()
@@ -674,13 +676,11 @@ namespace Seoul.Network.Game
             if (_visualEnabled == enabled) return;
             _visualEnabled = enabled;
 
-            if (_cachedRenderers != null)
-            {
+            if (_cachedRenderers != null) {
                 foreach (var r in _cachedRenderers)
                     if (r != null) r.enabled = enabled;
             }
-            if (_cachedColliders != null)
-            {
+            if (_cachedColliders != null) {
                 foreach (var c in _cachedColliders)
                     if (c != null) c.enabled = enabled;
             }
@@ -696,12 +696,10 @@ namespace Seoul.Network.Game
             DestroyStaleMainCameras(currentCamera);
 
             var follow = currentCamera.GetComponent<CameraFollow>();
-            if (follow != null)
-            {
+            if (follow != null) {
                 follow.SetTarget(t);
             }
-            else
-            {
+            else {
                 currentCamera.transform.SetParent(t);
                 currentCamera.transform.localPosition = new Vector3(0f, 3f, -6f);
                 currentCamera.transform.localRotation = Quaternion.Euler(15f, 0f, 0f);
@@ -711,8 +709,7 @@ namespace Seoul.Network.Game
         private static Camera FindCurrentSceneCamera()
         {
             var activeScene = SceneManager.GetActiveScene();
-            foreach (var camera in Camera.allCameras)
-            {
+            foreach (var camera in Camera.allCameras) {
                 if (!camera.gameObject.activeInHierarchy) continue;
                 if (!camera.CompareTag("MainCamera")) continue;
                 if (camera.gameObject.scene == activeScene)
@@ -724,12 +721,10 @@ namespace Seoul.Network.Game
         private static void DestroyStaleMainCameras(Camera keepCamera)
         {
             var activeScene = SceneManager.GetActiveScene();
-            foreach (var camera in Camera.allCameras)
-            {
+            foreach (var camera in Camera.allCameras) {
                 if (camera == keepCamera) continue;
                 if (!camera.CompareTag("MainCamera")) continue;
-                if (camera.gameObject.scene != activeScene)
-                {
+                if (camera.gameObject.scene != activeScene) {
                     Debug.Log($"[NetworkPlayer] Destroying stale MainCamera from scene '{camera.gameObject.scene.name}'.");
                     Object.Destroy(camera.gameObject);
                 }
@@ -744,12 +739,10 @@ namespace Seoul.Network.Game
             if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
             if (IsFullyFinished.Value) return;
 
-            if (isSuccess)
-            {
+            if (isSuccess) {
                 AddScore(scoreToAdd);
             }
-            else
-            {
+            else {
                 NotifyPlayerQTEFailureClientRpc(actionType);
             }
         }
