@@ -203,6 +203,7 @@ MonoBehaviour:
       MinSecondsBetweenUpdates: 0
       MaxSecondsBetweenUpdates: 0
     m_InternalValue: 0
+  characterCount: 4
 --- !u!1001 &83873924
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1472,6 +1473,7 @@ GameObject:
   - component: {fileID: 1086183087}
   - component: {fileID: 1086183086}
   - component: {fileID: 1086183088}
+  - component: {fileID: 1086183089}
   m_Layer: 0
   m_Name: WeatherGimmick
   m_TagString: Untagged
@@ -1534,12 +1536,47 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   allowedWeathers: 
   useForcedWeather: 1
-  forcedWeather: 1
+  forcedWeather: 2
   Current:
     UpdateTraits:
       MinSecondsBetweenUpdates: 0
       MaxSecondsBetweenUpdates: 0
     m_InternalValue: 0
+--- !u!114 &1086183089
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1086183085}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4be6b1179a1740c9b032e92c19ed6103, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Seoul.Network.Game.WeatherVFXController
+  rainParticlePrefab: {fileID: 0}
+  rainMaterial: {fileID: 0}
+  rainSoundClip: {fileID: 0}
+  rainVolume: 0.4
+  rainAreaSize: 30
+  rainDistance: 3
+  dustParticlePrefab: {fileID: 0}
+  dustMaterial: {fileID: 0}
+  dustSoundClip: {fileID: 0}
+  dustVolume: 0.35
+  dustAreaSize: 25
+  dustDistance: 4
+  dustFogColor: {r: 0.78, g: 0.65, b: 0.38, a: 1}
+  dustFogDensity: 0.025
+  typhoonParticlePrefab: {fileID: 0}
+  typhoonMaterial: {fileID: 0}
+  typhoonSoundClip: {fileID: 0}
+  typhoonVolume: 0.5
+  typhoonAreaSize: 32
+  typhoonDistance: 3.5
+  typhoonWindSpeed: {x: 22, y: 34}
+  typhoonFogColor: {r: 0.55, g: 0.55, b: 0.6, a: 1}
+  typhoonFogDensity: 0.018
 --- !u!1001 &1352574132
 PrefabInstance:
   m_ObjectHideFlags: 0

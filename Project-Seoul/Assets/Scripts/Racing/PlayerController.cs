@@ -259,7 +259,6 @@ public class PlayerController : MonoBehaviour
             _velocity.x = 0f;
         }
         ApplyVelocity();
-        ApplyVelocityInternal();
         SnapToExitRamp();
         CheckPlayerCollision();
     }

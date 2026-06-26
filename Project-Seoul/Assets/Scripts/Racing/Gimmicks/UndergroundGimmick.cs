@@ -407,7 +407,7 @@ namespace Seoul.Network.Game
                     neCol.isTrigger = true;
                     neCol.size = new Vector3(safeZoneLength, holeTriggerHeight, holeWidth + sideMarginBoth);
                     var neZone = noEntryGO.AddComponent<LaneRangeZone>();
-                    neZone.Mode = LaneRangeZone.BlockMode.BoundaryLock;
+                    neZone.Mode = LaneRangeZone.BlockMode.NoEntry;
                     neZone.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
                     neZone.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
                     neZone.UseMaxActiveWorldY = false;
