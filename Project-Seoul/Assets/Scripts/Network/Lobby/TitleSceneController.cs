@@ -23,8 +23,8 @@ namespace Seoul.Network.Lobby
 
         private void Awake()
         {
-            createRoomButton.onClick.AddListener(OnCreateClicked);
-            joinRoomButton.onClick.AddListener(OnJoinClicked);
+            createRoomButton.onClick.AddListener(() => { SoundManager.Instance.PlaySFX("Ui_button_click1"); OnCreateClicked(); });
+            joinRoomButton.onClick.AddListener(() => { SoundManager.Instance.PlaySFX("Ui_button_click1"); OnJoinClicked(); });
             SetStatus("");
         }
 
@@ -42,6 +42,7 @@ namespace Seoul.Network.Lobby
             }
 
             SetStatus($"생성 완료. 코드: {session.Code}");
+            SoundManager.Instance.PlaySFX("lobby_enter");
 
             // Host loads scene via NGO so all clients sync follow
             if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
@@ -75,6 +76,7 @@ namespace Seoul.Network.Lobby
             }
 
             SetStatus($"참가 완료: {session.Code}. 호스트 장면을 기다리는 중...");
+            SoundManager.Instance.PlaySFX("lobby_enter");
             // Client does NOT call LoadScene — NGO auto-syncs to host's current scene
         }
 

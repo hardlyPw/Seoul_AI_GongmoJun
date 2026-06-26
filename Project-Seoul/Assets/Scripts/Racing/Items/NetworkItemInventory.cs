@@ -53,6 +53,7 @@ public class NetworkItemInventory : NetworkBehaviour
     public bool TryPickupLocal(ItemType item)
     {
         if (currentItem.Value != ItemType.None) return false;
+        if (IsOwner) Seoul.SoundManager.Instance.PlaySFX("get_item");
         RequestPickupLocalServerRpc(item);
         return true;
     }
@@ -71,6 +72,7 @@ public class NetworkItemInventory : NetworkBehaviour
         if (IsOwner)
         {
             Debug.Log($"[CLIENT] 아이템 획득 완료: {item} (인벤토리 보관됨)");
+            Seoul.SoundManager.Instance.PlaySFX("get_item");
         }
     }
 
@@ -110,6 +112,7 @@ public class NetworkItemInventory : NetworkBehaviour
     private void ApplyItemEffectClientRpc(ItemType usedItem)
     {
         if (!IsOwner) return;
+        Seoul.SoundManager.Instance.PlaySFX("use_item");
 
         switch (usedItem)
         {

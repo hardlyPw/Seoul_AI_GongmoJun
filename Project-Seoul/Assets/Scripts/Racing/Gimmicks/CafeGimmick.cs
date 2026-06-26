@@ -93,6 +93,8 @@ namespace Seoul.Network.Game
             // 본인 클라이언트만 입력을 받으므로 원격 플레이어는 무시.
             if (player.TryGetComponent<NetworkObject>(out var no) && !no.IsOwner) return;
 
+            Seoul.SoundManager.Instance.PlaySFX("cafe_door");
+
             Action handler = () => TryGrantItem(player);
             _handlers[player] = handler;
             player.OnInteract += handler;
