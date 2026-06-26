@@ -2015,8 +2015,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraShake
   target: {fileID: 0}
-  xOffset: 0
+  xOffset: 2.5
   smoothTime: 0.2
+  dashXOffset: -1.5
   yFollowThreshold: -1
 --- !u!1001 &1629479643
 PrefabInstance:

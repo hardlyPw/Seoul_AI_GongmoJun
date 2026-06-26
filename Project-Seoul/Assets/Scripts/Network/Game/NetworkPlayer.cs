@@ -115,6 +115,11 @@ namespace Seoul.Network.Game
             }
             if (HasFinished.Value) return;
 
+            // 같은 씬에서 골인한 순서 기준 rank (1-based). 본인 HasFinished는 아직 false.
+            int rank = ComputeFinishRankForCurrentScene();
+            int rankBonus = GetRankBonus(rank);
+            if (rankBonus > 0) AddScore(rankBonus);
+
             if (SessionScoreStore.Instance != null)
                 SessionScoreStore.Instance.SetScore(OwnerClientId, GetCurrentScore());
 
@@ -124,8 +129,8 @@ namespace Seoul.Network.Game
                 NetworkRaceManager.Instance.ReportGoal(OwnerClientId);
             }
             else {
-                // 스테이지 2/3에는 NetworkRaceManager가 없음 — 직접 마무리
-                MarkFinished(0);
+                // 스테이지 2/3에는 NetworkRaceManager가 없음 — 직접 마무리. rank 보존.
+                MarkFinished(rank);
             }
 
             if (CurrentScene.Value.ToString() == FinalStageName) {
@@ -424,6 +429,30 @@ namespace Seoul.Network.Game
                 : Score.Value;
         }
 
+        // 현재 씬에서 본인이 몇 번째 골인인지(1-based). 본인 HasFinished가 set 되기 전에 호출해야 함.
+        private int ComputeFinishRankForCurrentScene()
+        {
+            string myScene = CurrentScene.Value.ToString();
+            int rank = 1;
+            foreach (var p in All)
+            {
+                if (p == null || p == this) continue;
+                if (p.CurrentScene.Value.ToString() != myScene) continue;
+                if (p.HasFinished.Value) rank++;
+            }
+            return rank;
+        }
+
+        // 스테이지별 골인 순위 보상 점수. 1위 100 → 4위 40, 5위 이하 0.
+        private static int GetRankBonus(int rank) => rank switch
+        {
+            1 => 100,
+            2 => 80,
+            3 => 60,
+            4 => 40,
+            _ => 0,
+        };
+
         private void OnSceneLoadedLocal(Scene scene, LoadSceneMode mode)
         {
             if (IsOwner) {
@@ -698,12 +727,18 @@ namespace Seoul.Network.Game
             var follow = currentCamera.GetComponent<CameraFollow>();
             if (follow != null) {
                 follow.SetTarget(t);
+                return;
             }
-            else {
-                currentCamera.transform.SetParent(t);
-                currentCamera.transform.localPosition = new Vector3(0f, 3f, -6f);
-                currentCamera.transform.localRotation = Quaternion.Euler(15f, 0f, 0f);
+
+            var followShake = currentCamera.GetComponent<CameraFollowAndShake>();
+            if (followShake != null) {
+                followShake.SetTarget(t);
+                return;
             }
+
+            currentCamera.transform.SetParent(t);
+            currentCamera.transform.localPosition = new Vector3(0f, 3f, -6f);
+            currentCamera.transform.localRotation = Quaternion.Euler(15f, 0f, 0f);
         }
 
         private static Camera FindCurrentSceneCamera()

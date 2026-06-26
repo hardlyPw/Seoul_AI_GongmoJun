@@ -33,8 +33,8 @@ namespace Seoul.Network.Game
         [SerializeField] private TMP_Text weatherText;
 
         [Header("Stamina Bar")]
-        [SerializeField] private Vector2 staminaBarAnchoredPosition = new Vector2(0f, 46f);
-        [SerializeField] private Vector2 staminaBarSize = new Vector2(380f, 34f);
+        [SerializeField] private Vector2 staminaBarAnchoredPosition = new Vector2(40f, 46f);
+        [SerializeField] private Vector2 staminaBarSize = new Vector2(480f, 34f);
 
         [Header("Settings")]
         [SerializeField] private float refreshInterval = 0.2f;
@@ -108,9 +108,9 @@ namespace Seoul.Network.Game
                 barObject.transform.SetParent(transform, false);
 
                 var barRect = barObject.GetComponent<RectTransform>();
-                barRect.anchorMin = new Vector2(0.5f, 0f);
-                barRect.anchorMax = new Vector2(0.5f, 0f);
-                barRect.pivot = new Vector2(0.5f, 0.5f);
+                barRect.anchorMin = new Vector2(0f, 0f);
+                barRect.anchorMax = new Vector2(0f, 0f);
+                barRect.pivot = new Vector2(0f, 0.5f);
                 barRect.anchoredPosition = staminaBarAnchoredPosition;
                 barRect.sizeDelta = staminaBarSize;
 

@@ -1,67 +1,68 @@
 using System.Collections;
 using UnityEngine;
 
+// CameraFollow ì™€ ë™ì¼í•œ world-space ì¶”ì  + dash dynamic offset + í™”ë©´ í”ë“¤ë¦¼.
+// CameraFollow ì˜ ë¡œì§ì„ ê·¸ëŒ€ë¡œ ê°€ì ¸ì™”ê³ , ì—¬ê¸°ì— StageEventManager ì˜ í”ë“¤ë¦¼ ì´ë²¤íŠ¸ ì²˜ë¦¬ë§Œ ì¶”ê°€ë¨.
+// 04_Stage_Subway ê°™ì´ ì¹´ë©”ë¼ í”ë“¤ë¦¼ì´ í•„ìš”í•œ ì”¬ì—” CameraFollow ëŒ€ì‹  ì´ ì»´í¬ë„ŒíŠ¸ë¥¼ ë¶™ì„.
 public class CameraFollowAndShake : MonoBehaviour
 {
-    // [±âÁ¸ º¯¼ö ÀÌ¸§°ú ¿ªÇÒ 100% µ¿ÀÏ À¯Áö]
     [SerializeField] private Transform target;
     [SerializeField] private float     xOffset    = 0f;
     [SerializeField] private float     smoothTime = 0.2f;
 
-    [Header("Y Follow (ÁöÇÏÂ÷µµ¿ë)")]
+    [Header("Dash Offset (ëŒ€ì‹œ ì¤‘ ì¹´ë©”ë¼ê°€ ë’¤ì— ë¨¸ë¬¼ëŸ¬ í”Œë ˆì´ì–´ê°€ í™”ë©´ ìš°ì¸¡ìœ¼ë¡œ ë°€ë¦¬ê²Œ)")]
+    [Tooltip("IsDashing == true ì¼ ë•Œ ì‚¬ìš©í•  xOffset. ìŒìˆ˜ë©´ ì¹´ë©”ë¼ê°€ í”Œë ˆì´ì–´ ë’¤ë¡œ ê°€ì„œ í”Œë ˆì´ì–´ê°€ í™”ë©´ ìš°ì¸¡ìœ¼ë¡œ ì´ë™.")]
+    [SerializeField] private float dashXOffset = -1.5f;
+
+    [Header("Y Follow (ì§€í•˜ì°¨ë„ìš©)")]
     [SerializeField] private float yFollowThreshold = -1f;
 
-    // ÀÎ½ºÆåÅÍ¿¡ Àû¾îµÎ¼Ì´ø ÀÌ»Û ¿ÀÇÁ¼Â ³ôÀÌ¿Í ±íÀÌ (Y: 7, Z: -8)
-    private float _defaultOffsetY;
-    private float _defaultOffsetZ;
-
     private Vector3 _velocity;
+    private float   _baseY;
+    private float   _baseZ;
+    private PlayerController _targetPlayer;
+
+    // í”ë“¤ë¦¼ì„ ë¹¼ê³  ë³´ê´€í•˜ëŠ” ì¹´ë©”ë¼ ë³¸ì²´ ìœ„ì¹˜. SmoothDamp ê°€ shake offset ëˆ„ì  ì˜í–¥ì„ ì•ˆ ë°›ê²Œ ë¶„ë¦¬.
+    private Vector3 _basePos;
     private Vector3 _shakeOffset = Vector3.zero;
     private Coroutine _shakeCoroutine;
 
-    public void SetTarget(Transform t) => target = t;
+    public void SetTarget(Transform t)
+    {
+        target = t;
+        _targetPlayer = t != null ? t.GetComponent<PlayerController>() : null;
+    }
 
     private void Start()
     {
-        if (target == null) target = transform.parent;
-
-        // [º¸Á¤] ÀÎ½ºÆåÅÍ °ªÀ» ¹ÏÁö ¸»°í, ¿ì¸®°¡ ¿øÇÏ´Â ¿Ïº®ÇÑ °ªÀ» °­Á¦·Î ÇÏµåÄÚµùÇØ µÓ´Ï´Ù.
-        _defaultOffsetY = 7f;   // (0, 2, -6)À¸·Î ²¿ÀÌ´Â °É ¿øÃµ Â÷´Ü
-        _defaultOffsetZ = -8f;
-
-        // ¿¡µğÅÍ ½ÇÇà ½Ã °¢µµ°¡ 15µµ·Î ²ªÀÌ´Â °É ¹æÁöÇÏ±â À§ÇØ ·ÎÄÃ °¢µµ¸¦ 35µµ·Î °­Á¦ °íÁ¤ÇÕ´Ï´Ù.
-        transform.localRotation = Quaternion.Euler(35f, 0f, 0f);
+        _baseY = transform.position.y;
+        _baseZ = transform.position.z;
+        _basePos = transform.position;
+        if (target != null && _targetPlayer == null)
+            _targetPlayer = target.GetComponent<PlayerController>();
     }
 
-    private void OnEnable()
-    {
-        StageEventManager.OnCameraShakeRequested += PlayShake;
-    }
-
-    private void OnDisable()
-    {
-        StageEventManager.OnCameraShakeRequested -= PlayShake;
-    }
+    private void OnEnable()  => StageEventManager.OnCameraShakeRequested += PlayShake;
+    private void OnDisable() => StageEventManager.OnCameraShakeRequested -= PlayShake;
 
     private void LateUpdate()
     {
         if (target == null) return;
 
-        // ±âÁ¸ ¼ö½Ä µ¿ÀÏ
-        float desiredLocalY = (target.position.y < yFollowThreshold)
-            ? _defaultOffsetY
-            : _defaultOffsetY - target.position.y;
+        float effectiveXOffset = (_targetPlayer != null && _targetPlayer.IsDashing)
+            ? dashXOffset : xOffset;
 
-        float targetLocalX = Mathf.SmoothDamp(transform.localPosition.x, xOffset, ref _velocity.x, smoothTime);
-        
-        Vector3 desiredLocalPos = new Vector3(targetLocalX, desiredLocalY, _defaultOffsetZ);
+        float desiredY = (target.position.y < yFollowThreshold)
+            ? _baseY + target.position.y
+            : _baseY;
 
-        // [ÇÙ½É Ãß°¡] ´©±º°¡ ¸Å ÇÁ·¹ÀÓ ³» °¢µµ¸¦ 15µµ·Î ²ªÀ¸·Á°í °£¼·ÇÏ¹Ç·Î, 
-        // LateUpdate ÃÖÇÏ´Ü¿¡¼­ ³» ·ÎÄÃ °¢µµ¸¦ °­Á¦·Î ´Ù½Ã 35µµ·Î µ¤¾î½á ¹ö¸³´Ï´Ù!
-        transform.localRotation = Quaternion.Euler(35f, 0f, 0f);
+        Vector3 desired = new Vector3(
+            target.position.x + effectiveXOffset,
+            desiredY,
+            _baseZ);
 
-        // ÃÖÁ¾ À§Ä¡ Àû¿ë (Èçµé¸² Æ÷ÇÔ)
-        transform.localPosition = desiredLocalPos + _shakeOffset;
+        _basePos = Vector3.SmoothDamp(_basePos, desired, ref _velocity, smoothTime);
+        transform.position = _basePos + _shakeOffset;
     }
 
     public void PlayShake(float duration, float intensity)
@@ -75,13 +76,9 @@ public class CameraFollowAndShake : MonoBehaviour
         float elapsed = 0f;
         while (elapsed < duration)
         {
-            // Ä«¸Ş¶ó ½Ã¼± ¹æÇâ ±âÁØ ÁÂ¿ì/À§¾Æ·¡ Èçµé¸² ºĞ¸®
             float shakeX = Random.Range(-1f, 1f) * intensity;
             float shakeY = Random.Range(-0.2f, 0.2f) * intensity;
-
-            // ·ÎÄÃ ÁÂÇ¥°è ±âÁØÀ¸·Î Èçµé¸² ¿ÀÇÁ¼Â »ı¼º
-            _shakeOffset = (Vector3.right * shakeX) + (Vector3.up * shakeY);
-
+            _shakeOffset = new Vector3(shakeX, shakeY, 0f);
             elapsed += Time.deltaTime;
             yield return null;
         }
