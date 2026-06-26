@@ -198,7 +198,7 @@ namespace Seoul.Network.Game
                     widthZ: bridgeWidth + sideMarginBoth,
                     minLane: lockMinLane,
                     maxLane: lockMaxLane,
-                    mode: LaneRangeZone.BlockMode.NoEntry);
+                    mode: LaneRangeZone.BlockMode.BoundaryLock);
 
                 BuildLaneLockZone("Exit_Stair_SideNoEntryZone",
                     container.transform,
@@ -209,7 +209,7 @@ namespace Seoul.Network.Game
                     widthZ: bridgeWidth + sideMarginBoth,
                     minLane: lockMinLane,
                     maxLane: lockMaxLane,
-                    mode: LaneRangeZone.BlockMode.NoEntry);
+                    mode: LaneRangeZone.BlockMode.BoundaryLock);
 
                 BuildBackWall("Entrance_Stair_NoAccessBackWall",
                     container.transform,
