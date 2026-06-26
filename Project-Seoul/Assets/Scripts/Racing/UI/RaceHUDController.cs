@@ -32,6 +32,10 @@ namespace Seoul.Network.Game
         [Header("Weather")]
         [SerializeField] private TMP_Text weatherText;
 
+        [Header("Stamina Bar")]
+        [SerializeField] private Vector2 staminaBarAnchoredPosition = new Vector2(0f, 46f);
+        [SerializeField] private Vector2 staminaBarSize = new Vector2(380f, 34f);
+
         [Header("Settings")]
         [SerializeField] private float refreshInterval = 0.2f;
 
@@ -43,11 +47,16 @@ namespace Seoul.Network.Game
         private readonly List<NetworkPlayer> _sorted = new();
         private Dictionary<ItemType, Sprite> _spriteMap;
         private Image _itemSlotBackground;
+        private Image _staminaBarBackground;
+        private Image _staminaBarFill;
         private static Sprite _roundedSlotSprite;
+        private static Sprite _staminaBackgroundSprite;
+        private static Sprite _staminaFillSprite;
 
         private void Awake()
         {
             EnsureItemSlot();
+            EnsureStaminaBar();
             BuildSpriteMap();
             if (itemIcon != null) itemIcon.enabled = false;
         }
@@ -89,6 +98,50 @@ namespace Seoul.Network.Game
             iconRect.anchoredPosition = Vector2.zero;
             iconRect.sizeDelta = new Vector2(-itemIconPadding * 2f, -itemIconPadding * 2f);
             itemIcon.preserveAspect = true;
+        }
+
+        private void EnsureStaminaBar()
+        {
+            if (_staminaBarBackground == null)
+            {
+                var barObject = new GameObject("StaminaBar", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                barObject.transform.SetParent(transform, false);
+
+                var barRect = barObject.GetComponent<RectTransform>();
+                barRect.anchorMin = new Vector2(0.5f, 0f);
+                barRect.anchorMax = new Vector2(0.5f, 0f);
+                barRect.pivot = new Vector2(0.5f, 0.5f);
+                barRect.anchoredPosition = staminaBarAnchoredPosition;
+                barRect.sizeDelta = staminaBarSize;
+
+                _staminaBarBackground = barObject.GetComponent<Image>();
+                _staminaBarBackground.sprite = GetStaminaBackgroundSprite();
+                _staminaBarBackground.type = Image.Type.Sliced;
+                _staminaBarBackground.raycastTarget = false;
+            }
+
+            if (_staminaBarFill == null)
+            {
+                var fillObject = new GameObject("Fill", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                fillObject.transform.SetParent(_staminaBarBackground.transform, false);
+
+                var fillRect = fillObject.GetComponent<RectTransform>();
+                fillRect.anchorMin = Vector2.zero;
+                fillRect.anchorMax = Vector2.one;
+                fillRect.pivot = new Vector2(0.5f, 0.5f);
+                fillRect.anchoredPosition = Vector2.zero;
+                fillRect.sizeDelta = new Vector2(-8f, -8f);
+
+                _staminaBarFill = fillObject.GetComponent<Image>();
+                _staminaBarFill.sprite = GetStaminaFillSprite();
+                _staminaBarFill.type = Image.Type.Filled;
+                _staminaBarFill.fillMethod = Image.FillMethod.Horizontal;
+                _staminaBarFill.fillOrigin = (int)Image.OriginHorizontal.Left;
+                _staminaBarFill.raycastTarget = false;
+            }
+
+            _staminaBarBackground.color = Color.white;
+            _staminaBarFill.color = Color.white;
         }
 
         private static Sprite GetRoundedSlotSprite()
@@ -135,6 +188,132 @@ namespace Seoul.Network.Game
             return _roundedSlotSprite;
         }
 
+        private static Sprite GetStaminaBackgroundSprite()
+        {
+            if (_staminaBackgroundSprite != null) return _staminaBackgroundSprite;
+
+            const int width = 256;
+            const int height = 40;
+            const int radius = 16;
+            const int whiteBorder = 3;
+            const int darkBorder = 6;
+            Color32 clear = new Color32(0, 0, 0, 0);
+            Color32 white = new Color32(245, 245, 242, 255);
+            Color32 border = new Color32(25, 25, 25, 255);
+            Color32 innerTop = new Color32(24, 24, 24, 245);
+            Color32 innerBottom = new Color32(55, 55, 55, 245);
+
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                name = "Runtime_StaminaBackground",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (!IsInsideRoundedRect(x, y, width, height, radius))
+                    {
+                        texture.SetPixel(x, y, clear);
+                        continue;
+                    }
+
+                    if (!IsInsideRoundedRect(x, y, width, height, radius - whiteBorder, whiteBorder))
+                    {
+                        texture.SetPixel(x, y, white);
+                        continue;
+                    }
+
+                    if (!IsInsideRoundedRect(x, y, width, height, radius - darkBorder, darkBorder))
+                    {
+                        texture.SetPixel(x, y, border);
+                        continue;
+                    }
+
+                    float t = Mathf.InverseLerp(darkBorder, height - darkBorder, y);
+                    texture.SetPixel(x, y, Color32.Lerp(innerBottom, innerTop, t));
+                }
+            }
+
+            texture.Apply(false, true);
+            _staminaBackgroundSprite = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, width, height),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect,
+                new Vector4(radius, radius, radius, radius));
+            _staminaBackgroundSprite.name = "Runtime_StaminaBackground";
+            _staminaBackgroundSprite.hideFlags = HideFlags.HideAndDontSave;
+            return _staminaBackgroundSprite;
+        }
+
+        private static Sprite GetStaminaFillSprite()
+        {
+            if (_staminaFillSprite != null) return _staminaFillSprite;
+
+            const int width = 256;
+            const int height = 32;
+            const int radius = 14;
+            const int border = 3;
+            Color32 clear = new Color32(0, 0, 0, 0);
+            Color32 darkBorder = new Color32(40, 40, 34, 255);
+            Color32 yellow = new Color32(255, 234, 24, 255);
+            Color32 orange = new Color32(255, 93, 45, 255);
+            Color32 shine = new Color32(255, 255, 210, 120);
+
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                name = "Runtime_StaminaFill",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (!IsInsideRoundedRect(x, y, width, height, radius))
+                    {
+                        texture.SetPixel(x, y, clear);
+                        continue;
+                    }
+
+                    if (!IsInsideRoundedRect(x, y, width, height, radius - border, border))
+                    {
+                        texture.SetPixel(x, y, darkBorder);
+                        continue;
+                    }
+
+                    float xT = Mathf.InverseLerp(border, width - border, x);
+                    Color baseColor = Color32.Lerp(yellow, orange, xT);
+                    if (y > height - 8 && y < height - 3)
+                    {
+                        baseColor = Color.Lerp(baseColor, shine, 0.45f);
+                    }
+                    texture.SetPixel(x, y, baseColor);
+                }
+            }
+
+            texture.Apply(false, true);
+            _staminaFillSprite = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, width, height),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect,
+                new Vector4(radius, radius, radius, radius));
+            _staminaFillSprite.name = "Runtime_StaminaFill";
+            _staminaFillSprite.hideFlags = HideFlags.HideAndDontSave;
+            return _staminaFillSprite;
+        }
+
         private static bool IsInsideRoundedRect(int x, int y, int size, int radius, int inset = 0)
         {
             int min = inset;
@@ -146,6 +325,27 @@ namespace Seoul.Network.Game
             int right = max - cornerRadius;
             int bottom = min + cornerRadius;
             int top = max - cornerRadius;
+
+            int nearestX = Mathf.Clamp(x, left, right);
+            int nearestY = Mathf.Clamp(y, bottom, top);
+            int dx = x - nearestX;
+            int dy = y - nearestY;
+            return dx * dx + dy * dy <= cornerRadius * cornerRadius;
+        }
+
+        private static bool IsInsideRoundedRect(int x, int y, int width, int height, int radius, int inset = 0)
+        {
+            int minX = inset;
+            int maxX = width - 1 - inset;
+            int minY = inset;
+            int maxY = height - 1 - inset;
+            if (x < minX || x > maxX || y < minY || y > maxY) return false;
+
+            int cornerRadius = Mathf.Max(0, radius);
+            int left = minX + cornerRadius;
+            int right = maxX - cornerRadius;
+            int bottom = minY + cornerRadius;
+            int top = maxY - cornerRadius;
 
             int nearestX = Mathf.Clamp(x, left, right);
             int nearestY = Mathf.Clamp(y, bottom, top);
@@ -166,6 +366,7 @@ namespace Seoul.Network.Game
 
         private void Update()
         {
+            UpdateStaminaBar();
             UpdateQTEUI(); // QTE는 즉각적인 피드백이 중요하므로 타이머와 무관하게 매 프레임 업데이트
 
             _refreshTimer += Time.deltaTime;
@@ -176,6 +377,27 @@ namespace Seoul.Network.Game
             UpdateMyItem();
             UpdateScoreboard();
             UpdateWeather();
+        }
+
+        private void UpdateStaminaBar()
+        {
+            EnsureStaminaBar();
+            if (_staminaBarBackground == null || _staminaBarFill == null) return;
+
+            var me = FindLocalPlayer();
+            if (me == null || !me.TryGetComponent<PlayerController>(out var player))
+            {
+                _staminaBarBackground.enabled = false;
+                _staminaBarFill.enabled = false;
+                return;
+            }
+
+            _staminaBarBackground.enabled = true;
+            _staminaBarFill.enabled = true;
+
+            float ratio = player.MaxStamina > 0f ? Mathf.Clamp01(player.Stamina / player.MaxStamina) : 0f;
+            _staminaBarFill.fillAmount = ratio;
+            _staminaBarFill.color = Color.white;
         }
 
         private void UpdateQTEUI()
