@@ -12,7 +12,7 @@ public class CameraFollowAndShake : MonoBehaviour
 
     [Header("Dash Offset (대시 중 카메라가 뒤에 머물러 플레이어가 화면 우측으로 밀리게)")]
     [Tooltip("IsDashing == true 일 때 사용할 xOffset. 음수면 카메라가 플레이어 뒤로 가서 플레이어가 화면 우측으로 이동.")]
-    [SerializeField] private float dashXOffset = -1.5f;
+    [SerializeField] private float dashXOffset = 0f;
 
     [Header("Y Follow (지하차도용)")]
     [SerializeField] private float yFollowThreshold = -1f;

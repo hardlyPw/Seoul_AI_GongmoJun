@@ -1478,6 +1478,7 @@ MonoBehaviour:
       MinSecondsBetweenUpdates: 0
       MaxSecondsBetweenUpdates: 0
     m_InternalValue: 0
+  characterCount: 4
 --- !u!114 &284686867
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -10039,8 +10040,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraFollow
   target: {fileID: 0}
-  xOffset: 2.5
+  xOffset: 4
   smoothTime: 0.2
+  dashXOffset: 0
   yFollowThreshold: -1
 --- !u!114 &1599837802
 MonoBehaviour:
@@ -10522,8 +10524,11 @@ MonoBehaviour:
   - {fileID: 1222556679}
   - {fileID: 512328473}
   weatherText: {fileID: 0}
+  staminaBarAnchoredPosition: {x: 40, y: 46}
+  staminaBarSize: {x: 480, y: 34}
   refreshInterval: 0.2
   qteStateText: {fileID: 0}
+  koreanFont: {fileID: 0}
 --- !u!1001 &1661526028
 PrefabInstance:
   m_ObjectHideFlags: 0
