@@ -47,10 +47,12 @@ namespace Seoul.Network.Game
         [Header("Materials (선택)")]
         [SerializeField] private Material bridgeMaterial;
         [SerializeField] private Material stairsMaterial;
+        [SerializeField] private Material stairSideMaterial;
         [SerializeField] private Material wallMaterial;
 
         private const string ContainerName = "_GeneratedVisuals";
         private static Material s_RuntimeFallbackMaterial;
+        private static Material s_RuntimeStairSideMaterial;
 
         private void OnEnable() => Rebuild();
 
@@ -87,10 +89,7 @@ namespace Seoul.Network.Game
 
             // Lane → z(중심/폭) 변환. 런타임이면 Instance, 에디터 편집 중이면 FindFirstObjectByType.
             // LaneManager가 전혀 없으면 fallback 폭 사용 (transform.position.z는 건드리지 않음).
-            var lm = LaneManager.Instance;
-#if UNITY_EDITOR
-            if (lm == null) lm = FindFirstObjectByType<LaneManager>();
-#endif
+            var lm = FindBestLaneManager();
             float bridgeWidth;
             // LaneLock_Trigger가 다리 양옆에 추가로 덮을 폭(편측). LaneSpacing × 1 = 옆 lane 1칸.
             float sideLaneMargin;
@@ -120,6 +119,11 @@ namespace Seoul.Network.Game
             float sideMarginBoth = sideLaneMargin * 2f;
             int lockMinLane = lm != null ? Mathf.Clamp(Mathf.Min(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1) : bridgeMinLane;
             int lockMaxLane = lm != null ? Mathf.Clamp(Mathf.Max(bridgeMinLane, bridgeMaxLane), 0, lm.LaneCount - 1) : bridgeMaxLane;
+            float stairAccessWidth = lm != null
+                ? Mathf.Max(0.1f, bridgeWidth - lm.LaneSpacing * 0.2f)
+                : Mathf.Max(0.1f, bridgeWidth - 0.2f);
+            float groundPlayerCenterY = transform.position.y + 1.25f;
+            float bridgePlayerCenterMinY = transform.position.y + bridgeHeight + 0.25f;
 
             // 좌표 기준: local origin = 입구 계단 시작점, 도로 표면(y=0).
             float entranceStartX = 0f;
@@ -143,7 +147,7 @@ namespace Seoul.Network.Game
             CreateCube(container.transform, "Bridge_Floor",
                 center: new Vector3(bridgeCenterX, bridgeHeight - 0.1f, 0f), // top y = bridgeHeight
                 size:   new Vector3(bridgeLength, 0.2f, bridgeWidth),
-                mat:    bridgeMaterial,
+                mat:    WalkwaySurfaceMaterial,
                 groundLayer: groundLayer);
 
             // 3) 출구 계단 (시각용, y 반전)
@@ -156,17 +160,11 @@ namespace Seoul.Network.Game
             //    Lane lock은 별도 trigger가 전체 영역 처리.
             if (bridgeWallHeight > 0.01f)
             {
-                float wallY = bridgeHeight + bridgeWallHeight * 0.5f;
-                CreateCube(container.transform, "Bridge_Wall_NegZ",
-                    center: new Vector3(bridgeCenterX, wallY, -bridgeWidth * 0.5f - 0.1f),
-                    size:   new Vector3(bridgeLength, bridgeWallHeight, 0.2f),
-                    mat:    wallMaterial,
-                    groundLayer: -1);
-                CreateCube(container.transform, "Bridge_Wall_PosZ",
-                    center: new Vector3(bridgeCenterX, wallY, bridgeWidth * 0.5f + 0.1f),
-                    size:   new Vector3(bridgeLength, bridgeWallHeight, 0.2f),
-                    mat:    wallMaterial,
-                    groundLayer: -1);
+                float railZ = bridgeWidth * 0.5f + 0.1f;
+                BuildBridgeGuardrailSide(container.transform, "Bridge_Wall_NegZ",
+                    bridgeStartX, bridgeEndX, bridgeHeight, -railZ);
+                BuildBridgeGuardrailSide(container.transform, "Bridge_Wall_PosZ",
+                    bridgeStartX, bridgeEndX, bridgeHeight, railZ);
             }
 
             // 5) Lane Range Zone — 다리 평평한 구간 위에서만 lane change를 다리 lane 범위로 제한.
@@ -185,11 +183,13 @@ namespace Seoul.Network.Game
                 zone.MinLane = lockMinLane;
                 zone.MaxLane = lockMaxLane;
                 zone.Mode = laneZoneMode;
+                zone.UseMinActiveWorldY = true;
+                zone.MinActiveWorldY = bridgePlayerCenterMinY;
             }
 
             if (lm != null)
             {
-                BuildLaneLockZone("Entrance_Stair_BoundaryLockZone",
+                BuildLaneLockZone("Entrance_Stair_SideNoEntryZone",
                     container.transform,
                     xStart: entranceStartX,
                     xEnd: entranceEndX,
@@ -197,9 +197,10 @@ namespace Seoul.Network.Game
                     sizeY: bridgeHeight + bridgeWallHeight + 1f,
                     widthZ: bridgeWidth + sideMarginBoth,
                     minLane: lockMinLane,
-                    maxLane: lockMaxLane);
+                    maxLane: lockMaxLane,
+                    mode: LaneRangeZone.BlockMode.NoEntry);
 
-                BuildLaneLockZone("Exit_Stair_BoundaryLockZone",
+                BuildLaneLockZone("Exit_Stair_SideNoEntryZone",
                     container.transform,
                     xStart: exitStartX,
                     xEnd: exitEndX,
@@ -207,7 +208,28 @@ namespace Seoul.Network.Game
                     sizeY: bridgeHeight + bridgeWallHeight + 1f,
                     widthZ: bridgeWidth + sideMarginBoth,
                     minLane: lockMinLane,
-                    maxLane: lockMaxLane);
+                    maxLane: lockMaxLane,
+                    mode: LaneRangeZone.BlockMode.NoEntry);
+
+                BuildBackWall("Entrance_Stair_NoAccessBackWall",
+                    container.transform,
+                    x: entranceEndX,
+                    centerY: (bridgeHeight + bridgeWallHeight) * 0.5f,
+                    sizeY: bridgeHeight + bridgeWallHeight + 1f,
+                    widthZ: stairAccessWidth,
+                    minLane: lockMinLane,
+                    maxLane: lockMaxLane,
+                    maxActiveWorldY: groundPlayerCenterY);
+
+                BuildBackWall("Exit_Stair_NoAccessBackWall",
+                    container.transform,
+                    x: exitStartX,
+                    centerY: (bridgeHeight + bridgeWallHeight) * 0.5f,
+                    sizeY: bridgeHeight + bridgeWallHeight + 1f,
+                    widthZ: stairAccessWidth,
+                    minLane: lockMinLane,
+                    maxLane: lockMaxLane,
+                    maxActiveWorldY: groundPlayerCenterY);
             }
 
             // 6) 입구 ramp snap trigger (UndergroundExitRamp 재사용, start=낮 end=높)
@@ -244,20 +266,115 @@ namespace Seoul.Network.Game
             for (int i = 0; i < stairCount; i++)
             {
                 float centerX = xStart + (i + 0.5f) * stepX;
-                float topY    = yStart + (i + 1f) * stepY;
+                float stairIndex = stepY >= 0f ? i + 1f : i;
+                float topY    = yStart + stairIndex * stepY;
                 float thickness = Mathf.Abs(topY - baseY);
                 if (thickness < 0.01f) continue; // 도로와 같은 높이 단은 안 만듦
-                float centerY = (topY + baseY) * 0.5f;
+                const float treadThickness = 0.08f;
+                float bodyThickness = Mathf.Max(0.01f, thickness - treadThickness);
+                float bodyCenterY = baseY + bodyThickness * 0.5f;
                 CreateCube(parent, $"{namePrefix}_{i}",
-                    center: new Vector3(centerX, centerY, 0f),
-                    size:   new Vector3(stepX, thickness, widthZ),
-                    mat:    stairsMaterial,
+                    center: new Vector3(centerX, bodyCenterY, 0f),
+                    size:   new Vector3(stepX, bodyThickness, widthZ),
+                    mat:    stairSideMaterial != null ? stairSideMaterial : RuntimeStairSideMaterial,
+                    groundLayer: -1);
+                CreateCube(parent, $"{namePrefix}_Tread_{i}",
+                    center: new Vector3(centerX, topY - treadThickness * 0.5f, 0f),
+                    size:   new Vector3(stepX, treadThickness, widthZ),
+                    mat:    WalkwaySurfaceMaterial,
+                    groundLayer: -1);
+            }
+
+            BuildStairGuardrails(parent, namePrefix, xStart, yStart, yEnd, widthZ);
+        }
+
+        private void BuildStairGuardrails(Transform parent, string namePrefix,
+            float xStart, float yStart, float yEnd, float widthZ)
+        {
+            if (bridgeWallHeight <= 0.01f) return;
+
+            float railZ = widthZ * 0.5f + 0.1f;
+            BuildStairGuardrailSide(parent, $"{namePrefix}_Rail_NegZ", xStart, yStart, yEnd, -railZ);
+            BuildStairGuardrailSide(parent, $"{namePrefix}_Rail_PosZ", xStart, yStart, yEnd, railZ);
+        }
+
+        private void BuildStairGuardrailSide(Transform parent, string name,
+            float xStart, float yStart, float yEnd, float z)
+        {
+            const float topRailHeight = 0.16f;
+            const float topRailDepth = 0.24f;
+            const float postWidth = 0.12f;
+            const float postDepth = 0.16f;
+
+            float rise = yEnd - yStart;
+            float slopeLength = Mathf.Sqrt(stairLength * stairLength + rise * rise);
+            float angleDeg = Mathf.Atan2(rise, stairLength) * Mathf.Rad2Deg;
+            float centerX = xStart + stairLength * 0.5f;
+            float centerY = (yStart + yEnd) * 0.5f + bridgeWallHeight;
+
+            CreateCube(parent, $"{name}_Top",
+                center: new Vector3(centerX, centerY, z),
+                size:   new Vector3(slopeLength, topRailHeight, topRailDepth),
+                mat:    wallMaterial,
+                groundLayer: -1,
+                localRotation: Quaternion.Euler(0f, 0f, angleDeg));
+
+            int postCount = Mathf.Max(2, stairCount + 1);
+            for (int i = 0; i < postCount; i++)
+            {
+                float t = postCount == 1 ? 0f : i / (float)(postCount - 1);
+                float postX = xStart + stairLength * t;
+                float surfaceY = Mathf.Lerp(yStart, yEnd, t);
+                CreateCube(parent, $"{name}_Post_{i}",
+                    center: new Vector3(postX, surfaceY + bridgeWallHeight * 0.5f, z),
+                    size:   new Vector3(postWidth, bridgeWallHeight, postDepth),
+                    mat:    wallMaterial,
                     groundLayer: -1);
             }
         }
 
         // Ramp snap trigger (UndergroundExitRamp) 생성.
         // PlayerController가 trigger 안일 때 캐릭터 y를 SurfaceYAt(x)로 자동 보정.
+        private void BuildBridgeGuardrailSide(Transform parent, string name,
+            float xStart, float xEnd, float surfaceY, float z)
+        {
+            const float topRailHeight = 0.16f;
+            const float bottomRailHeight = 0.12f;
+            const float railDepth = 0.24f;
+            const float postWidth = 0.12f;
+            const float postDepth = 0.16f;
+
+            float length = xEnd - xStart;
+            float centerX = (xStart + xEnd) * 0.5f;
+            float topY = surfaceY + bridgeWallHeight;
+            float bottomY = surfaceY + 0.18f;
+
+            CreateCube(parent, $"{name}_Top",
+                center: new Vector3(centerX, topY, z),
+                size:   new Vector3(length, topRailHeight, railDepth),
+                mat:    wallMaterial,
+                groundLayer: -1);
+
+            CreateCube(parent, $"{name}_Bottom",
+                center: new Vector3(centerX, bottomY, z),
+                size:   new Vector3(length, bottomRailHeight, railDepth),
+                mat:    wallMaterial,
+                groundLayer: -1);
+
+            int postCount = Mathf.Max(2, Mathf.CeilToInt(length / 0.75f) + 1);
+            float postHeight = Mathf.Max(0.1f, topY - bottomY);
+            for (int i = 0; i < postCount; i++)
+            {
+                float t = postCount == 1 ? 0f : i / (float)(postCount - 1);
+                float postX = Mathf.Lerp(xStart, xEnd, t);
+                CreateCube(parent, $"{name}_Post_{i}",
+                    center: new Vector3(postX, bottomY + postHeight * 0.5f, z),
+                    size:   new Vector3(postWidth, postHeight, postDepth),
+                    mat:    wallMaterial,
+                    groundLayer: -1);
+            }
+        }
+
         private void BuildRampTrigger(string n, Transform container,
             float xStart, float xEnd, float startY, float endY, float widthZ,
             int minLane, int maxLane, bool useLaneRange)
@@ -281,7 +398,9 @@ namespace Seoul.Network.Game
 
         private void BuildLaneLockZone(string n, Transform container,
             float xStart, float xEnd, float centerY, float sizeY, float widthZ,
-            int minLane, int maxLane)
+            int minLane, int maxLane,
+            LaneRangeZone.BlockMode mode = LaneRangeZone.BlockMode.BoundaryLock,
+            float minActiveWorldY = float.NegativeInfinity)
         {
             var go = new GameObject(n);
             go.transform.SetParent(container, false);
@@ -291,17 +410,52 @@ namespace Seoul.Network.Game
             col.isTrigger = true;
             col.size = new Vector3(xEnd - xStart, sizeY, widthZ);
             var zone = go.AddComponent<LaneRangeZone>();
-            zone.Mode = LaneRangeZone.BlockMode.BoundaryLock;
+            zone.Mode = mode;
             zone.MinLane = minLane;
             zone.MaxLane = maxLane;
+            if (!float.IsNegativeInfinity(minActiveWorldY))
+            {
+                zone.UseMinActiveWorldY = true;
+                zone.MinActiveWorldY = minActiveWorldY;
+            }
+        }
+
+        private void BuildBackWall(string n, Transform container,
+            float x, float centerY, float sizeY, float widthZ,
+            int minLane, int maxLane, float maxActiveWorldY = float.PositiveInfinity)
+        {
+            var go = new GameObject(n);
+            go.transform.SetParent(container, false);
+            go.transform.localPosition = new Vector3(x, centerY, 0f);
+            go.hideFlags = HideFlags.DontSave;
+
+            var col = go.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(0.35f, sizeY, widthZ);
+
+            var wall = go.AddComponent<BackWall>();
+            wall.UseLaneRange = true;
+            wall.MinLane = minLane;
+            wall.MaxLane = maxLane;
+            if (!float.IsPositiveInfinity(maxActiveWorldY))
+            {
+                wall.UseMaxActiveWorldY = true;
+                wall.MaxActiveWorldY = maxActiveWorldY;
+            }
         }
 
         private void CreateCube(Transform parent, string n, Vector3 center, Vector3 size, Material mat, int groundLayer)
+        {
+            CreateCube(parent, n, center, size, mat, groundLayer, Quaternion.identity);
+        }
+
+        private void CreateCube(Transform parent, string n, Vector3 center, Vector3 size, Material mat, int groundLayer, Quaternion localRotation)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = n;
             go.transform.SetParent(parent, false);
             go.transform.localPosition = center;
+            go.transform.localRotation = localRotation;
             go.transform.localScale    = size;
             if (groundLayer >= 0)
             {
@@ -341,11 +495,64 @@ namespace Seoul.Network.Game
             }
         }
 
+        private Material WalkwaySurfaceMaterial => stairSideMaterial != null ? stairSideMaterial : RuntimeStairSideMaterial;
+
+        private static Material RuntimeStairSideMaterial
+        {
+            get
+            {
+                if (s_RuntimeStairSideMaterial != null) return s_RuntimeStairSideMaterial;
+
+                var shader = Shader.Find("Universal Render Pipeline/Lit")
+                    ?? Shader.Find("Universal Render Pipeline/Simple Lit")
+                    ?? Shader.Find("Standard");
+                if (shader == null) return null;
+
+                s_RuntimeStairSideMaterial = new Material(shader)
+                {
+                    name = "GeneratedOverpassStairSideMaterial",
+                    hideFlags = HideFlags.DontSave
+                };
+
+                var color = new Color(0.16f, 0.17f, 0.17f, 1f);
+                if (s_RuntimeStairSideMaterial.HasProperty("_BaseColor"))
+                    s_RuntimeStairSideMaterial.SetColor("_BaseColor", color);
+                else if (s_RuntimeStairSideMaterial.HasProperty("_Color"))
+                    s_RuntimeStairSideMaterial.SetColor("_Color", color);
+                return s_RuntimeStairSideMaterial;
+            }
+        }
+
         private static void DestroySafe(Object o)
         {
             if (o == null) return;
             if (Application.isPlaying) Destroy(o);
             else                       DestroyImmediate(o);
+        }
+
+        private static LaneManager FindBestLaneManager()
+        {
+            if (LaneManager.Instance != null) return LaneManager.Instance;
+
+            LaneManager best = null;
+            int bestPriority = int.MinValue;
+            var managers = FindObjectsOfType<LaneManager>(true);
+            foreach (var manager in managers)
+            {
+                if (manager == null) continue;
+                int priority = 0;
+                if (manager.gameObject.name == "GameManagers") priority += 100;
+                if (manager.GetComponent<StageManager>() != null) priority += 50;
+                if (manager.GetComponent<ScoreManager>() != null) priority += 25;
+                if (manager.transform.position.sqrMagnitude < 100f) priority += 10;
+                if (priority > bestPriority)
+                {
+                    bestPriority = priority;
+                    best = manager;
+                }
+            }
+
+            return best;
         }
     }
 }

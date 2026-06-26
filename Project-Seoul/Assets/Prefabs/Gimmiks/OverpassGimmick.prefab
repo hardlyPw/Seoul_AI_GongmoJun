@@ -55,6 +55,6 @@ MonoBehaviour:
   stairCount: 5
   bridgeWallHeight: 2
   groundLayerName: Ground
-  bridgeMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
-  stairsMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
-  wallMaterial: {fileID: 2100000, guid: db28b90fc9bb32f47882e3f00116e1bb, type: 2}
+  bridgeMaterial: {fileID: 2100000, guid: 0b110b110b110b110b110b110b110b11, type: 2}
+  stairsMaterial: {fileID: 2100000, guid: 0b110b110b110b110b110b110b110b12, type: 2}
+  wallMaterial: {fileID: 2100000, guid: 0b110b110b110b110b110b110b110b13, type: 2}

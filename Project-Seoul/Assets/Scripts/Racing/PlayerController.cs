@@ -101,6 +101,8 @@ public class PlayerController : MonoBehaviour
     private float _jumpBufferTimer;
     private float _recoveryTimer;
     private float _recoverySpeedMult = 1f;
+    private float _lastLaneBlockLogTime = -10f;
+    private float _lastForwardBlockLogTime = -10f;
     // source → multiplier. Overpass/Kickboard/Puddle 등 여러 효과가 동시에 곱해지도록.
     // 단일 슬롯이던 시절에는 한쪽이 끝나면 다른 효과가 사라지는 버그가 있었음.
     private readonly Dictionary<string, float> _speedModifiers = new();
@@ -250,7 +252,12 @@ public class PlayerController : MonoBehaviour
         HandleLaneSnap();
         // 출구 BackWall 안에 있으면 전진(+x) 차단. lane change(z), 중력(y)은 그대로.
         // 단, 출구 ramp를 올라오는 중인 플레이어는 BackWall 예외 (안 그러면 ramp 위에서 멈춤).
-        if (IsInActiveBackWall() && _currentExitRamp == null && _velocity.x > 0f) _velocity.x = 0f;
+        var activeBackWall = GetActiveBackWall();
+        if (activeBackWall != null && !IsOnUsableRampForCurrentLane() && _velocity.x > 0f)
+        {
+            LogForwardBlock(activeBackWall);
+            _velocity.x = 0f;
+        }
         ApplyVelocity();
         ApplyVelocityInternal();
         SnapToExitRamp();
@@ -398,16 +405,24 @@ public class PlayerController : MonoBehaviour
     {
         //if (_isFallen) return;
         if (_currentState == AirborneState) return;
+        float v = _input.GetLaneChange();
         // 아이템 관련 수정
         // [추가] 택시 아이템 작동 중일 때 플레이어의 좌우 레인 변경 입력을 강제로 차단
-        if (TryGetComponent<NetworkItemInventory>(out var inv) && inv.IsLaneLocked) return;
+        if (TryGetComponent<NetworkItemInventory>(out var inv) && inv.IsLaneLocked)
+        {
+            if (Mathf.Abs(v) > 0.5f) LogLaneBlock("item lane lock", _currentLane);
+            return;
+        }
 
         _laneChangeCooldownTimer -= Time.deltaTime;
-        if (_laneChangeCooldownTimer > 0f) return;
+        if (_laneChangeCooldownTimer > 0f)
+        {
+            if (Mathf.Abs(v) > 0.5f) LogLaneBlock($"cooldown {_laneChangeCooldownTimer:F2}s", _currentLane);
+            return;
+        }
 
         int laneCount = LaneManager.Instance != null ? LaneManager.Instance.LaneCount : 6;
 
-        float v = _input.GetLaneChange();
         // 자전거 도로 보행자 도로 분할
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "05_Stage_Bicycle" && transform.position.x > 125f)
         {
@@ -421,7 +436,11 @@ public class PlayerController : MonoBehaviour
         if (v > 0.5f && _currentLane > 0)
         {
             // 지하차도 영역에서 lane change 시도 → fall (옆에서 hole로 진입 방지).
-            if (_underWallOverlap > 0) return; // 지하차도 옆 벽 — lane change 자체 차단 (페널티 없이 막힘)
+            if (_underWallOverlap > 0)
+            {
+                LogLaneBlock("underground wall overlap", _currentLane - 1);
+                return;
+            }
             int target = _currentLane - 1;
             // HardBlock 모드 zone만 차단 — Penalty 모드는 lane change 그대로 진행 (페널티는 OnTriggerEnter에서 처리).
             if (IsHardBlockedByZone(target)) return;
@@ -430,11 +449,23 @@ public class PlayerController : MonoBehaviour
         }
         else if (v < -0.5f && _currentLane < laneCount - 1)
         {
-            if (_underWallOverlap > 0) return; // 지하차도 옆 벽 — lane change 자체 차단 (페널티 없이 막힘)
+            if (_underWallOverlap > 0)
+            {
+                LogLaneBlock("underground wall overlap", _currentLane + 1);
+                return;
+            }
             int target = _currentLane + 1;
             if (IsHardBlockedByZone(target)) return;
             _currentLane = target;
             _laneChangeCooldownTimer = laneChangeCooldown;
+        }
+        else if (v > 0.5f && _currentLane <= 0)
+        {
+            LogLaneBlock("already at min lane", _currentLane);
+        }
+        else if (v < -0.5f && _currentLane >= laneCount - 1)
+        {
+            LogLaneBlock("already at max lane", _currentLane);
         }
     }
 
@@ -450,12 +481,17 @@ public class PlayerController : MonoBehaviour
 
     private bool IsInActiveBackWall()
     {
+        return GetActiveBackWall() != null;
+    }
+
+    private Seoul.Network.Game.BackWall GetActiveBackWall()
+    {
         foreach (var wall in _overlappingBackWalls)
         {
             if (wall == null) continue;
-            if (wall.IsActiveFor(this)) return true;
+            if (wall.IsActiveFor(this)) return wall;
         }
-        return false;
+        return null;
     }
 
     private bool IsHardBlockedByZone(int targetLane)
@@ -473,14 +509,26 @@ public class PlayerController : MonoBehaviour
             switch (zone.Mode)
             {
                 case Seoul.Network.Game.LaneRangeZone.BlockMode.HardBlock:
-                    if (IsOutsideRangeAndAwayFromCurrent(zone, targetLane)) return true;
+                    if (IsOutsideRangeAndAwayFromCurrent(zone, targetLane))
+                    {
+                        LogLaneBlock($"zone {zone.name} HardBlock [{min}-{max}]", targetLane);
+                        return true;
+                    }
                     break;
                 case Seoul.Network.Game.LaneRangeZone.BlockMode.NoEntry:
                 // 현재 lane이 범위 밖일 때 안으로 들어오는 lane change 차단. 안에서의 이동은 자유.
-                    if (!currentInside && targetInside) return true;
+                    if (!currentInside && targetInside)
+                    {
+                        LogLaneBlock($"zone {zone.name} NoEntry [{min}-{max}]", targetLane);
+                        return true;
+                    }
                     break;
                 case Seoul.Network.Game.LaneRangeZone.BlockMode.BoundaryLock:
-                    if (currentInside != targetInside) return true;
+                    if (currentInside != targetInside)
+                    {
+                        LogLaneBlock($"zone {zone.name} BoundaryLock [{min}-{max}]", targetLane);
+                        return true;
+                    }
                     break;
             }
         }
@@ -489,6 +537,39 @@ public class PlayerController : MonoBehaviour
     }
 
     // zone 범위 밖으로 "벗어나는" 방향인지 판정. 현재 lane이 이미 밖이어도 안쪽으로 좁히는 변경(예: 4 → 3)은 허용.
+    private void LogLaneBlock(string reason, int targetLane)
+    {
+        if (Time.time - _lastLaneBlockLogTime < 0.4f) return;
+        _lastLaneBlockLogTime = Time.time;
+
+        string zones = "";
+        foreach (var zone in _overlappingLaneRangeZones)
+        {
+            if (zone == null) continue;
+            zones += $"{zone.name}({zone.Mode},{zone.MinLane}-{zone.MaxLane},active={zone.IsActiveFor(this)}) ";
+        }
+        if (string.IsNullOrEmpty(zones)) zones = "none";
+
+        Debug.Log(
+            $"[LaneBlock] reason={reason}, currentLane={_currentLane}, targetLane={targetLane}, " +
+            $"pos={transform.position}, laneManager={(LaneManager.Instance != null ? LaneManager.Instance.name : "null")}, " +
+            $"underWall={_underWallOverlap}, zones={zones}",
+            this);
+    }
+
+    private void LogForwardBlock(Seoul.Network.Game.BackWall wall)
+    {
+        if (Time.time - _lastForwardBlockLogTime < 0.4f) return;
+        _lastForwardBlockLogTime = Time.time;
+
+        Debug.Log(
+            $"[ForwardBlock] wall={wall.name}, currentLane={_currentLane}, pos={transform.position}, " +
+            $"wallLaneRange={(wall.UseLaneRange ? $"{wall.MinLane}-{wall.MaxLane}" : "all")}, " +
+            $"wallMaxY={(wall.UseMaxActiveWorldY ? wall.MaxActiveWorldY.ToString("F2") : "none")}, " +
+            $"onRamp={IsOnUsableRampForCurrentLane()}",
+            this);
+    }
+
     private bool IsOutsideRangeAndAwayFromCurrent(Seoul.Network.Game.LaneRangeZone zone, int targetLane)
     {
         int min = zone.MinLane;
@@ -537,6 +618,18 @@ public class PlayerController : MonoBehaviour
         }
 
         _rb.MovePosition(newPos);
+    }
+
+    private bool IsOnUsableRampForCurrentLane()
+    {
+        if (_currentExitRamp == null) return false;
+        if (!_currentExitRamp.IsActiveForLane(_currentLane)) return false;
+
+        Vector3 nextPos = _rb.position + _velocity * Time.fixedDeltaTime;
+        float surfaceY = _currentExitRamp.SurfaceYAt(nextPos.x);
+        float targetY = surfaceY + _col.height * 0.5f;
+
+        return Mathf.Abs(targetY - nextPos.y) <= 1f;
     }
 
     // ── 점프 입력 ─────────────────────────────────────────

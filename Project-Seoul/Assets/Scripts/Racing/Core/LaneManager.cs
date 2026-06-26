@@ -13,8 +13,28 @@ public class LaneManager : MonoBehaviour
 
     private void Awake()
     {
-        if (Instance != null) { Destroy(gameObject); return; }
+        if (Instance != null && Instance != this)
+        {
+            if (GetPriority() <= Instance.GetPriority())
+            {
+                Destroy(this);
+                return;
+            }
+
+            Destroy(Instance);
+        }
+
         Instance = this;
+    }
+
+    private int GetPriority()
+    {
+        int priority = 0;
+        if (gameObject.name == "GameManagers") priority += 100;
+        if (GetComponent<StageManager>() != null) priority += 50;
+        if (GetComponent<ScoreManager>() != null) priority += 25;
+        if (transform.position.sqrMagnitude < 100f) priority += 10;
+        return priority;
     }
 
     public float GetLaneZ(int index) =>

@@ -75,6 +75,14 @@ namespace Seoul.Network.Game
         public void AddScore(int amount)
         {
             if (!IsServer) return;
+
+            if (TryGetComponent<PlayerScore>(out var playerScore))
+            {
+                playerScore.AddScore(amount);
+                Score.Value = playerScore.Score.Value;
+                return;
+            }
+
             Score.Value += amount;
             Debug.Log($"[NetworkPlayer] clientId={OwnerClientId} score={Score.Value} (+{amount})");
         }
@@ -99,7 +107,7 @@ namespace Seoul.Network.Game
             if (HasFinished.Value) return;
 
             if (SessionScoreStore.Instance != null)
-                SessionScoreStore.Instance.SetScore(OwnerClientId, Score.Value);
+                SessionScoreStore.Instance.SetScore(OwnerClientId, GetCurrentScore());
 
             // NetworkRaceManager가 살아있고 NGO-spawn된 경우에만 위임 (스테이지 1)
             bool useRaceManager = NetworkRaceManager.Instance != null && NetworkRaceManager.Instance.IsSpawned;
@@ -333,7 +341,12 @@ namespace Seoul.Network.Game
             if (IsServer)
             {
                 var store = SessionScoreStore.Instance;
-                if (store != null) Score.Value = store.GetScore(OwnerClientId);
+                if (store != null)
+                {
+                    Score.Value = store.GetScore(OwnerClientId);
+                    if (TryGetComponent<PlayerScore>(out var playerScore))
+                        playerScore.Score.Value = Score.Value;
+                }
             }
 
             if (IsOwner)
@@ -408,6 +421,13 @@ namespace Seoul.Network.Game
                     UpdateIntermediateSpectateTarget();
                 }
             }
+        }
+
+        private int GetCurrentScore()
+        {
+            return TryGetComponent<PlayerScore>(out var playerScore)
+                ? playerScore.Score.Value
+                : Score.Value;
         }
 
         private void OnSceneLoadedLocal(Scene scene, LoadSceneMode mode)

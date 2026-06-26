@@ -96,7 +96,7 @@ MonoBehaviour:
   knockDownOnCollision: 1
   thickness: 1
   height: 3
-  wallMaterial: {fileID: 2100000, guid: a06e27177b78f724d9d163c03712633b, type: 2}
+  wallMaterial: {fileID: 2100000, guid: 9a129a129a129a129a129a129a129a11, type: 2}
   MinLane:
     UpdateTraits:
       MinSecondsBetweenUpdates: 0

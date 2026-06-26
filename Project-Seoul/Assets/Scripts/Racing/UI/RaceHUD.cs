@@ -4,19 +4,44 @@ using UnityEngine.UI;
 
 public class RaceHUD : MonoBehaviour
 {
+#pragma warning disable 0649
+    [System.Serializable]
+    private struct ItemSpriteEntry
+    {
+        public string itemName;
+        public Sprite sprite;
+    }
+#pragma warning restore 0649
+
     [Header("References")]
     [SerializeField] private PlayerController player;
     [SerializeField] private ItemInventory    inventory;
 
     [Header("UI Elements")]
-    [SerializeField] private Slider          staminaBar;
-    [SerializeField] private TextMeshProUGUI scoreText;
-    [SerializeField] private TextMeshProUGUI itemText;
-    [SerializeField] private TextMeshProUGUI stateText;
+    [SerializeField] private Slider             staminaBar;
+    [SerializeField] private TextMeshProUGUI    scoreText;
+    [SerializeField] private Image              itemIcon;
+    [SerializeField] private ItemSpriteEntry[]  itemSprites;
+    [SerializeField] private TextMeshProUGUI    stateText;
+
+    private System.Collections.Generic.Dictionary<string, Sprite> _spriteMap;
 
     private void Start()
     {
+        BuildSpriteMap();
         AutoPositionUI();
+        if (itemIcon != null) itemIcon.enabled = false;
+    }
+
+    private void BuildSpriteMap()
+    {
+        _spriteMap = new System.Collections.Generic.Dictionary<string, Sprite>();
+        if (itemSprites == null) return;
+        foreach (var e in itemSprites)
+        {
+            if (!string.IsNullOrEmpty(e.itemName) && e.sprite != null)
+                _spriteMap[e.itemName] = e.sprite;
+        }
     }
 
     private void AutoPositionUI()
@@ -44,16 +69,16 @@ public class RaceHUD : MonoBehaviour
             scoreText.alignment = TextAlignmentOptions.Right;
         }
 
-        // 아이템 - 하단 좌측
-        if (itemText != null)
+        // 아이템 아이콘 - 좌측 상단
+        if (itemIcon != null)
         {
-            var rt = itemText.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0f, 0f);
-            rt.anchorMax = new Vector2(0f, 0f);
-            rt.pivot     = new Vector2(0f, 0f);
-            rt.anchoredPosition = new Vector2(20f, 100f);
-            rt.sizeDelta        = new Vector2(200f, 50f);
-            itemText.fontSize   = 20f;
+            var rt = itemIcon.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot     = new Vector2(0f, 1f);
+            rt.anchoredPosition = new Vector2(20f, -20f);
+            rt.sizeDelta        = new Vector2(120f, 120f);
+            itemIcon.preserveAspect = true;
         }
 
         // 상태 텍스트 - 중앙 상단
@@ -94,10 +119,7 @@ public class RaceHUD : MonoBehaviour
         if (scoreText != null && ScoreManager.Instance != null)
             scoreText.text = $"SCORE\n{ScoreManager.Instance.GetScore(player)}";
 
-        if (itemText != null)
-            itemText.text = (inventory != null && inventory.HasItem)
-                ? $"ITEM: {inventory.HeldItem.ItemName}"
-                : "ITEM: 없음";
+        UpdateItemIcon();
 
         if (stateText == null)
         {
@@ -124,7 +146,7 @@ public class RaceHUD : MonoBehaviour
                     stateText.text = "QTE 성공!\n(+30pt)";
                 else
                     stateText.text = $"[QTE 묘기]\n입력 키: {player.AirborneState.CurrentRequiredKey}\n성공: {player.AirborneState.SuccessCount}/5";
-                
+
                 Debug.Log($"[RaceHUD] 체공 중 UI 표시 업데이트 성공: {stateText.text}");
             }
             else if (player.IsSprinting) stateText.text = "SPRINT";
@@ -137,5 +159,25 @@ public class RaceHUD : MonoBehaviour
                 Debug.LogWarning("[RaceHUD] 플레이어가 체공 중이나 stateText가 null이어서 UI에 표시하지 못했습니다. RaceHUD 프리팹 인스펙터에서 StateText를 연결해주세요.");
             }
         }
+    }
+
+    private void UpdateItemIcon()
+    {
+        if (itemIcon == null) return;
+
+        if (inventory == null || !inventory.HasItem)
+        {
+            itemIcon.enabled = false;
+            return;
+        }
+
+        if (!_spriteMap.TryGetValue(inventory.HeldItem.ItemName, out var sprite))
+        {
+            itemIcon.enabled = false;
+            return;
+        }
+
+        itemIcon.sprite  = sprite;
+        itemIcon.enabled = true;
     }
 }

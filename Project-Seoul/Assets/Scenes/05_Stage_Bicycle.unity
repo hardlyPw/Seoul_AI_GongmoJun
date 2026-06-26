@@ -10501,7 +10501,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Seoul.Network.Game.RaceHUDController
   myScoreText: {fileID: 1133028302}
-  itemText: {fileID: 0}
+  itemIcon: {fileID: 0}
+  itemSprites:
+  - type: 1
+    sprite: {fileID: 21300000, guid: a255132ef7f5d9b45b7e7de93301b75f, type: 3}
+  - type: 2
+    sprite: {fileID: 21300000, guid: 730bd09d67dd3ff43a0af3b167726792, type: 3}
+  - type: 3
+    sprite: {fileID: 21300000, guid: c7107d3b8ad531c49ade1c6d44e063d6, type: 3}
+  - type: 4
+    sprite: {fileID: 21300000, guid: 9078b9eb983873344b62bf98909e8854, type: 3}
+  - type: 5
+    sprite: {fileID: 21300000, guid: 58b5d7f9ff0919f4fb386e17330281be, type: 3}
+  itemSlotAnchoredPosition: {x: 20, y: -140}
+  itemSlotSize: {x: 110, y: 110}
+  itemIconPadding: 12
   scoreboardEntries:
   - {fileID: 1475153052}
   - {fileID: 1102040957}

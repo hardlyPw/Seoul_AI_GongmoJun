@@ -20,6 +20,10 @@ namespace Seoul.Network.Game
         public int MaxLane;
 
         [Header("Vertical Activation")]
+        [Tooltip("If enabled, this zone only applies while the player's world Y is at or above MinActiveWorldY.")]
+        public bool UseMinActiveWorldY;
+        [Tooltip("World Y threshold used when UseMinActiveWorldY is enabled.")]
+        public float MinActiveWorldY;
         [Tooltip("If enabled, this zone only applies while the player's world Y is at or below MaxActiveWorldY.")]
         public bool UseMaxActiveWorldY;
         [Tooltip("World Y threshold used when UseMaxActiveWorldY is enabled.")]
@@ -47,8 +51,9 @@ namespace Seoul.Network.Game
         public bool IsActiveFor(PlayerController player)
         {
             if (player == null) return false;
-            if (!UseMaxActiveWorldY) return true;
-            return player.transform.position.y <= MaxActiveWorldY;
+            if (UseMinActiveWorldY && player.transform.position.y < MinActiveWorldY) return false;
+            if (UseMaxActiveWorldY && player.transform.position.y > MaxActiveWorldY) return false;
+            return true;
         }
     }
 }

@@ -93,13 +93,10 @@ public class NetworkItemInventory : NetworkBehaviour
 
         if (usedItem == ItemType.Coin)
         {
-            if (ScoreManager.Instance != null)
+            var playerScore = GetComponent<PlayerScore>();
+            if (playerScore != null)
             {
-                var playerScore = GetComponent<PlayerScore>();
-                if (playerScore != null)
-                {
-                    playerScore.AddScore(10);
-                }
+                playerScore.AddScore(10);
             }
         }
 
@@ -225,9 +222,10 @@ public class NetworkItemInventory : NetworkBehaviour
     [ServerRpc]
     public void RequestAddScoreServerRpc(int amount)
     {
-        if (ScoreManager.Instance != null && _player != null)
+        var playerScore = GetComponent<PlayerScore>();
+        if (playerScore != null)
         {
-            ScoreManager.Instance.AddScore(_player, amount);
+            playerScore.AddScore(amount);
             Debug.Log($"[SERVER] QTE 성공 신호 접수 완료 -> '{gameObject.name}'에게 {amount}pt 동기화 복사 진행");
         }
     }

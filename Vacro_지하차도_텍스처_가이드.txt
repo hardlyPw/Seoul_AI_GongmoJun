@@ -1,0 +1,216 @@
+============================================================
+Vacro 지하차도(Underpass) 텍스처 생성 가이드
+============================================================
+
+[핵심 전제]
+지하차도 부품(벽/바닥/천장/계단/가드)은 UndergroundGimmick.cs가
+런타임에 cube primitive로 자동 생성합니다.
+필요한 건 그 cube에 입힐 "타일링 텍스처"이지, 3D 모델이 아닙니다.
+
+→ Vacro의 "텍스트 → 2D 이미지" 단계까지만 사용.
+→ "3D 변환(200 크레딧)" 스킵 → 비용 절약.
+→ 생성된 PNG를 Unity Material의 albedo로 직접 사용.
+
+
+------------------------------------------------------------
+[1] 필요한 텍스처 목록 (4종)
+------------------------------------------------------------
+UndergroundGimmick.cs 의 머티리얼 슬롯 기준:
+
+  1) undergroundMaterial  → 벽 / 바닥 / 천장 / 가드 공유
+                            (코드상 한 머티리얼이 floor/wall/ceiling/guard에
+                             다 적용됨 — 단일 콘크리트 톤 텍스처 추천)
+  2) rampMaterial         → 출구 비탈(아스팔트 도로 느낌)
+  3) stairsMaterial       → 입구 계단 표면
+  4) holeMaterial         → 현재 사용 안 함 (Hole_Visual 제거됨, 비워둬도 OK)
+
+※ 벽과 바닥을 다른 텍스처로 쓰고 싶으면 코드 수정 필요
+   (CreateCube 호출 시 mat 인자를 분리). 우선은 단일 텍스처로 시작 권장.
+
+
+------------------------------------------------------------
+[2] Vacro 작업 절차 (단계별)
+------------------------------------------------------------
+
+STEP 1. Vacro 접속 → "텍스트 → 이미지" 모드 선택
+        (3D 변환 메뉴는 사용하지 않음)
+
+STEP 2. 아래 [3]번 섹션의 프롬프트 복사 → 입력란에 붙여넣기
+
+STEP 3. 비율(Aspect Ratio) → 1:1 (Square) 고정
+        해상도 → 1024×1024 이상 권장 (Unity 임포트 시 quality 2K로 설정)
+
+STEP 4. 4장 시안 생성 → 다음 체크리스트로 1장 선별:
+        [ ] 정면 top-down 평면 (3/4 각도 X)
+        [ ] 좌우 / 상하 가장자리에 강한 모티프(글자, 큰 패턴) 없음
+            → 타일링 시 이음매가 덜 드러남
+        [ ] 그림자 / 비네팅 없음 (균일 조명)
+        [ ] 콘셉트 톤이 어두운 게임 분위기와 맞음
+
+STEP 5. 1장 다운로드 → 파일명을 직관적으로:
+        - underpass_concrete_wall_2k.png
+        - underpass_asphalt_ramp_2k.png
+        - underpass_stairs_2k.png
+
+STEP 6. 이음매 검수 (선택)
+        Photoshop / GIMP의 Offset 필터(가로 50%, 세로 50%) 적용
+        → 가운데로 모인 가장자리가 부드럽게 이어지는지 확인
+        → 이음매가 보이면 클론 브러시로 살짝 다듬거나 다른 시안 선택
+
+
+------------------------------------------------------------
+[3] 부품별 프롬프트
+------------------------------------------------------------
+
+----- (A) undergroundMaterial — 콘크리트 벽/바닥/천장 공유 -----
+
+A seamless tileable 2D texture of a Korean urban underpass concrete
+surface, top-down flat orthographic view, square 1:1 aspect ratio,
+edges tile seamlessly with no visible seam on horizontal or vertical
+wrap, subtle horizontal concrete panel joints every quarter of the
+image, fine sandblasted concrete grain, uniform flat lighting with
+NO directional shadow, NO vignette, NO ambient occlusion baked in,
+flat base colors only with NO painted highlights and NO reflections,
+medium cool gray primary tone with slightly darker joint lines and
+subtle warm gray weathering accents, low contrast suitable for game
+readability, inspired by Seoul Gangnam underpass walls and modern
+Korean tunnel concrete (NOT photoreal grime, NOT toy-like, NOT
+stylized graffiti), clean minimalist game-ready texture for Unity
+Material albedo, no text, no signage, no logos
+
+
+----- (B) rampMaterial — 출구 비탈(아스팔트) -----
+
+A seamless tileable 2D texture of fresh asphalt road surface,
+top-down flat orthographic view, square 1:1 aspect ratio, edges
+tile seamlessly with no visible seam on horizontal or vertical
+wrap, fine even asphalt aggregate grain across the whole image,
+uniform flat lighting with NO directional shadow and NO vignette,
+flat base colors only with NO baked AO and NO painted highlights,
+dark charcoal gray primary tone with subtle lighter gray flecks
+representing aggregate stones, no lane markings, no paint stripes,
+no cracks, no patches, low contrast for game readability, inspired
+by Korean city expressway pavement (NOT photoreal wet asphalt, NOT
+toy-like, NOT stylized), clean minimalist game-ready texture for
+Unity Material albedo
+
+
+----- (C) stairsMaterial — 입구 계단 표면 -----
+
+A seamless tileable 2D texture of a Korean underpass stair tread
+surface, top-down flat orthographic view, square 1:1 aspect ratio,
+edges tile seamlessly with no visible seam on horizontal or vertical
+wrap, fine non-slip granular finish across the whole image, uniform
+flat lighting with NO directional shadow, NO vignette, NO baked AO,
+flat base colors only with NO painted highlights and NO reflections,
+medium warm gray primary tone with a slightly darker thin line at
+the front edge representing the anti-slip nosing strip, low contrast
+for game readability, inspired by Seoul subway station stair treads
+(NOT photoreal worn concrete, NOT toy-like, NOT stylized), clean
+minimalist game-ready texture for Unity Material albedo, no text,
+no signage
+
+
+----- (D) (선택) 천장을 따로 만들고 싶을 때 — 형광등 천장 -----
+※ 현재 코드는 천장도 undergroundMaterial을 공유합니다.
+※ 천장만 분리하려면 UndergroundGimmick.cs에서 Underground_Ceiling_*
+   CreateCube 호출 시 별도 머티리얼 슬롯을 추가하고 이걸 할당하세요.
+
+A seamless tileable 2D texture of an underpass ceiling with
+embedded linear fluorescent light strips, top-down flat orthographic
+view, square 1:1 aspect ratio, edges tile seamlessly with no visible
+seam on horizontal or vertical wrap, two long horizontal flat light
+strips spanning the full width at one third and two thirds height,
+surrounded by smooth painted concrete panels, uniform flat lighting
+with NO directional shadow and NO vignette, flat base colors only
+with NO baked AO and NO painted bloom, medium gray ceiling tone
+with soft warm off-white light strip color, low contrast for game
+readability, inspired by Korean tunnel ceiling lighting (NOT
+photoreal glow, NOT toy-like, NOT stylized), clean minimalist
+game-ready texture for Unity Material albedo
+
+
+------------------------------------------------------------
+[4] Unity 임포트 & 머티리얼 적용
+------------------------------------------------------------
+
+STEP 1. 폴더 생성
+        Project-Seoul/Assets/Textures/Underpass/
+
+STEP 2. 다운로드한 PNG들을 폴더로 드래그
+
+STEP 3. 각 텍스처 클릭 → Inspector
+        - Texture Type: Default
+        - Wrap Mode: Repeat   ★ 필수 (Clamp 두면 타일링 안 됨)
+        - Filter Mode: Bilinear
+        - Max Size: 2048
+        - sRGB: ON (albedo 용)
+
+STEP 4. 머티리얼 생성 (4개)
+        Project-Seoul/Assets/Materials/Underpass/
+        - M_Underpass_Concrete  (Shader: URP/Lit)
+        - M_Underpass_Asphalt   (Shader: URP/Lit)
+        - M_Underpass_Stairs    (Shader: URP/Lit)
+        - (옵션) M_Underpass_Ceiling
+
+        각 머티리얼의 Base Map 슬롯에 해당 텍스처 드래그.
+        Smoothness 0.0 ~ 0.2 (광택 거의 없음).
+        Metallic 0.
+
+STEP 5. UndergroundGimmick prefab 열기 → Inspector
+        [Materials] 섹션:
+        - undergroundMaterial → M_Underpass_Concrete
+        - rampMaterial        → M_Underpass_Asphalt
+        - stairsMaterial      → M_Underpass_Stairs
+        - holeMaterial        → 비워둠
+
+STEP 6. Tiling 조정
+        텍스처 1장이 1×1 단위로 늘어지면 흐릿하니까, 머티리얼의
+        Tiling 값을 부품 실제 크기에 맞춰 조정:
+
+        - M_Underpass_Concrete  Tiling X: undergroundLength / 2
+                                Tiling Y: undergroundWallHeight / 2
+        - M_Underpass_Asphalt   Tiling X: exitRampLength / 2
+                                Tiling Y: holeWidth / 2
+        - M_Underpass_Stairs    Tiling X: 1, Y: 1
+
+        (대략 2 Unity unit 당 텍스처 1회 반복이 자연스러움.
+         씬에서 보고 패턴이 너무 잘게 보이면 Tiling을 낮추세요.)
+
+
+------------------------------------------------------------
+[5] 자주 발생하는 문제
+------------------------------------------------------------
+
+증상                           원인                      대처
+------------------------------ ------------------------- ----------------------------
+타일링 시 명백한 이음매        가장자리에 큰 패턴 포함   다른 시안 선택 / Photoshop
+                                                         Offset 후 클론 브러시
+머티리얼이 분홍색              URP 미적용                Shader → URP/Lit 변경
+텍스처가 흐릿하게 늘어남       Tiling 1×1 그대로         [4] STEP 6 참고
+씬에서 너무 어두움             Smoothness 너무 낮거나    Material → Smoothness 살짝
+                                Base Color 어두움         올리거나 Base Color 밝게
+타일링 안 됨 (한 번만 보임)    Wrap Mode = Clamp         Wrap Mode = Repeat
+
+
+------------------------------------------------------------
+[6] 핵심 원칙 요약
+------------------------------------------------------------
+
+1. 지하차도는 "오브젝트"가 아니라 "표면" — 3D 변환 안 함, 2D 텍스처만.
+2. 프롬프트 필수 키워드 4종:
+   seamless tileable / top-down orthographic / square 1:1 /
+   edges tile seamlessly
+3. 균일 조명 강제: NO directional shadow, NO vignette, NO baked AO
+   → Unity 씬 조명과 충돌 방지
+4. 텍스트/사인/로고는 명시적으로 금지 (no text, no signage)
+   → 타일링 시 같은 글자 반복돼서 눈에 거슬림
+5. Wrap Mode = Repeat, Tiling = (부품길이 / 2) 가 시작점
+6. 같은 머티리얼 슬롯을 여러 부품이 공유하므로 시각 일관성을 위해
+   undergroundMaterial 한 장으로 시작 → 필요하면 분리
+
+------------------------------------------------------------
+참고: Vacro_3D_프롬프트_가이드.md 는 standalone 3D 오브젝트
+(가로등, 카페, 메뉴판 등)용입니다. 표면 텍스처가 필요한
+지하차도 / 도로 / 보도블록 등은 이 가이드를 사용하세요.
+============================================================

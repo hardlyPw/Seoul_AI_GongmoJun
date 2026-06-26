@@ -39,6 +39,7 @@ namespace Seoul.Network.Game
                 if (IsServer)
                 {
                     Score.Value += amount;
+                    SessionScoreStore.Instance?.SetScore(OwnerClientId, Score.Value);
                     Debug.Log($"[PlayerScore] Stage1 - clientId={OwnerClientId} score={Score.Value} (+{amount})");
                 }
             }
@@ -63,6 +64,8 @@ namespace Seoul.Network.Game
             if (amount <= 0) return;
 
             Score.Value += amount;
+
+            SessionScoreStore.Instance?.SetScore(OwnerClientId, Score.Value);
             Debug.Log($"[PlayerScore] Stage2/3 RPC - clientId={OwnerClientId} score={Score.Value} (+{amount})");
         }
     }

@@ -17,6 +17,7 @@ GameObject:
   - component: {fileID: 6267397090953133657}
   - component: {fileID: 6586932174518866934}
   - component: {fileID: 7031459225403562420}
+  - component: {fileID: 2199473054728601135}
   - component: {fileID: -5385992040161655711}
   - component: {fileID: 8473269383939361228}
   m_Layer: 7
@@ -368,6 +369,23 @@ MonoBehaviour:
         byte0060: 0
         byte0061: 0
   IsFullyFinished:
+    UpdateTraits:
+      MinSecondsBetweenUpdates: 0
+      MaxSecondsBetweenUpdates: 0
+    m_InternalValue: 0
+--- !u!114 &2199473054728601135
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5633554692639426554}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9dc145aa4177a6b42820a131706463fa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Seoul.Network.Game.PlayerScore
+  Score:
     UpdateTraits:
       MinSecondsBetweenUpdates: 0
       MaxSecondsBetweenUpdates: 0

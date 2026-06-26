@@ -1,16 +1,30 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Seoul.Network.Game
 {
     public class RaceHUDController : MonoBehaviour
     {
+#pragma warning disable 0649
+        [System.Serializable]
+        private struct ItemSpriteEntry
+        {
+            public ItemType type;
+            public Sprite   sprite;
+        }
+#pragma warning restore 0649
+
         [Header("My Score")]
         [SerializeField] private TMP_Text myScoreText;
 
-        [Header("My Item")]
-        [SerializeField] private TMP_Text itemText;
+        [Header("My Item (Icon)")]
+        [SerializeField] private Image             itemIcon;
+        [SerializeField] private ItemSpriteEntry[] itemSprites;
+        [SerializeField] private Vector2           itemSlotAnchoredPosition = new Vector2(20f, -140f);
+        [SerializeField] private Vector2           itemSlotSize = new Vector2(110f, 110f);
+        [SerializeField] private float             itemIconPadding = 12f;
 
         [Header("Scoreboard (size 4)")]
         [SerializeField] private TMP_Text[] scoreboardEntries = new TMP_Text[4];
@@ -26,10 +40,127 @@ namespace Seoul.Network.Game
 
         private float _refreshTimer;
         private readonly List<NetworkPlayer> _sorted = new();
+        private Dictionary<ItemType, Sprite> _spriteMap;
+        private Image _itemSlotBackground;
+        private static Sprite _roundedSlotSprite;
 
         private void Awake()
         {
-            EnsureItemText();
+            EnsureItemSlot();
+            BuildSpriteMap();
+            if (itemIcon != null) itemIcon.enabled = false;
+        }
+
+        private void EnsureItemSlot()
+        {
+            if (_itemSlotBackground == null)
+            {
+                var slotObject = new GameObject("ItemSlot", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                slotObject.transform.SetParent(transform, false);
+
+                var slotRect = slotObject.GetComponent<RectTransform>();
+                slotRect.anchorMin = new Vector2(0f, 1f);
+                slotRect.anchorMax = new Vector2(0f, 1f);
+                slotRect.pivot = new Vector2(0f, 1f);
+                slotRect.anchoredPosition = itemSlotAnchoredPosition;
+                slotRect.sizeDelta = itemSlotSize;
+
+                _itemSlotBackground = slotObject.GetComponent<Image>();
+                _itemSlotBackground.sprite = GetRoundedSlotSprite();
+                _itemSlotBackground.type = Image.Type.Sliced;
+                _itemSlotBackground.color = Color.white;
+                _itemSlotBackground.raycastTarget = false;
+            }
+
+            if (itemIcon == null)
+            {
+                var iconObject = new GameObject("ItemIcon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                iconObject.transform.SetParent(_itemSlotBackground.transform, false);
+
+                itemIcon = iconObject.GetComponent<Image>();
+                itemIcon.raycastTarget = false;
+            }
+
+            var iconRect = itemIcon.GetComponent<RectTransform>();
+            iconRect.anchorMin = Vector2.zero;
+            iconRect.anchorMax = Vector2.one;
+            iconRect.pivot = new Vector2(0.5f, 0.5f);
+            iconRect.anchoredPosition = Vector2.zero;
+            iconRect.sizeDelta = new Vector2(-itemIconPadding * 2f, -itemIconPadding * 2f);
+            itemIcon.preserveAspect = true;
+        }
+
+        private static Sprite GetRoundedSlotSprite()
+        {
+            if (_roundedSlotSprite != null) return _roundedSlotSprite;
+
+            const int size = 64;
+            const int radius = 10;
+            const int border = 4;
+            Color32 clear = new Color32(0, 0, 0, 0);
+            Color32 borderColor = new Color32(150, 150, 150, 255);
+            Color32 fillColor = new Color32(8, 8, 8, 230);
+
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                name = "Runtime_ItemSlotRounded",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    bool inOuter = IsInsideRoundedRect(x, y, size, radius);
+                    bool inInner = IsInsideRoundedRect(x, y, size, radius - border, border);
+                    texture.SetPixel(x, y, !inOuter ? clear : inInner ? fillColor : borderColor);
+                }
+            }
+
+            texture.Apply(false, true);
+
+            _roundedSlotSprite = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect,
+                new Vector4(radius, radius, radius, radius));
+            _roundedSlotSprite.name = "Runtime_ItemSlotRounded";
+            _roundedSlotSprite.hideFlags = HideFlags.HideAndDontSave;
+            return _roundedSlotSprite;
+        }
+
+        private static bool IsInsideRoundedRect(int x, int y, int size, int radius, int inset = 0)
+        {
+            int min = inset;
+            int max = size - 1 - inset;
+            if (x < min || x > max || y < min || y > max) return false;
+
+            int cornerRadius = Mathf.Max(0, radius);
+            int left = min + cornerRadius;
+            int right = max - cornerRadius;
+            int bottom = min + cornerRadius;
+            int top = max - cornerRadius;
+
+            int nearestX = Mathf.Clamp(x, left, right);
+            int nearestY = Mathf.Clamp(y, bottom, top);
+            int dx = x - nearestX;
+            int dy = y - nearestY;
+            return dx * dx + dy * dy <= cornerRadius * cornerRadius;
+        }
+
+        private void BuildSpriteMap()
+        {
+            _spriteMap = new Dictionary<ItemType, Sprite>();
+            if (itemSprites == null) return;
+            foreach (var e in itemSprites)
+            {
+                if (e.sprite != null) _spriteMap[e.type] = e.sprite;
+            }
         }
 
         private void Update()
@@ -101,28 +232,6 @@ namespace Seoul.Network.Game
             }
         }
 
-        private void EnsureItemText()
-        {
-            if (itemText != null) return;
-
-            var itemObject = new GameObject("ItemText", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
-            itemObject.transform.SetParent(transform, false);
-
-            var rect = itemObject.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2(20f, -140f);
-            rect.sizeDelta = new Vector2(500f, 60f);
-
-            itemText = itemObject.GetComponent<TextMeshProUGUI>();
-            itemText.fontSize = 36f;
-            itemText.alignment = TextAlignmentOptions.Left;
-            itemText.color = Color.white;
-            itemText.raycastTarget = false;
-            itemText.text = "Item: -";
-        }
-
         private void UpdateWeather()
         {
             if (weatherText == null) return;
@@ -143,7 +252,6 @@ namespace Seoul.Network.Game
                 if (p.IsOwner) { me = p; break; }
             }
 
-            // [���� �Ϸ�] �� NetworkPlayer ������Ʈ���� PlayerScore ������Ʈ�� ã�� ���� ���
             if (me != null && me.TryGetComponent<PlayerScore>(out var playerScore))
             {
                 myScoreText.text = $"Score: {playerScore.Score.Value}";
@@ -156,17 +264,24 @@ namespace Seoul.Network.Game
 
         private void UpdateMyItem()
         {
-            if (itemText == null) return;
+            EnsureItemSlot();
+            if (itemIcon == null) return;
 
             var me = FindLocalPlayer();
+            ItemType currentItem = ItemType.None;
             if (me != null && me.TryGetComponent<NetworkItemInventory>(out var inventory))
             {
-                itemText.text = $"Item: {GetItemDisplayName(inventory.currentItem.Value)}";
+                currentItem = inventory.currentItem.Value;
             }
-            else
+
+            if (currentItem == ItemType.None || !_spriteMap.TryGetValue(currentItem, out var sprite))
             {
-                itemText.text = "Item: -";
+                itemIcon.enabled = false;
+                return;
             }
+
+            itemIcon.sprite  = sprite;
+            itemIcon.enabled = true;
         }
 
         private static NetworkPlayer FindLocalPlayer()
@@ -180,20 +295,6 @@ namespace Seoul.Network.Game
             return null;
         }
 
-        private static string GetItemDisplayName(ItemType item)
-        {
-            return item switch
-            {
-                ItemType.None => "-",
-                ItemType.Coffee => "Coffee",
-                ItemType.AlarmClock => "Alarm Clock",
-                ItemType.Coin => "Coin",
-                ItemType.Kickboard => "Kickboard",
-                ItemType.Taxi => "Taxi",
-                _ => item.ToString()
-            };
-        }
-
         private void UpdateScoreboard()
         {
             _sorted.Clear();
@@ -202,12 +303,11 @@ namespace Seoul.Network.Game
                 if (p != null) _sorted.Add(p);
             }
 
-            // [���� �Ϸ�] �� �÷��̾ ���� PlayerScore�� Score.Value ���� ���Ͽ� ����
             _sorted.Sort((a, b) =>
             {
                 int scoreA = a.TryGetComponent<PlayerScore>(out var sA) ? sA.Score.Value : 0;
                 int scoreB = b.TryGetComponent<PlayerScore>(out var sB) ? sB.Score.Value : 0;
-                return scoreB.CompareTo(scoreA); // �������� ����
+                return scoreB.CompareTo(scoreA);
             });
 
             for (int i = 0; i < scoreboardEntries.Length; i++)
@@ -218,10 +318,9 @@ namespace Seoul.Network.Game
                 if (i < _sorted.Count)
                 {
                     var p = _sorted[i];
-                    
-                    // [���� �Ϸ�] ȭ�鿡 ǥ���� ���� �÷��̾��� ���� ���� �Ľ�
+
                     int finalScore = p.TryGetComponent<PlayerScore>(out var s) ? s.Score.Value : 0;
-                    
+
                     string label = p.IsOwner ? $"P{p.OwnerClientId} (You)" : $"P{p.OwnerClientId}";
                     entry.text = $"{i + 1}. {label}  -  {finalScore}";
                 }
