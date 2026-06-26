@@ -22,6 +22,7 @@ namespace Seoul
 
         private Dictionary<string, AudioClip> _clipCache = new Dictionary<string, AudioClip>();
         private List<AudioSource> _sfxSources = new List<AudioSource>();
+        private AudioSource _bgmSource;
         private int _initialPoolSize = 5;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -44,11 +45,23 @@ namespace Seoul
                 return;
             }
 
+            // Initialize BGM Source
+            var bgmGo = new GameObject("BGMSource");
+            bgmGo.transform.SetParent(transform);
+            _bgmSource = bgmGo.AddComponent<AudioSource>();
+            _bgmSource.playOnAwake = false;
+            _bgmSource.loop = true;
+            _bgmSource.spatialBlend = 0f; // 2D 사운드
+            _bgmSource.volume = 0.5f;     // BGM 볼륨 절반으로 조정
+
             // Initialize SFX Source Pool
             for (int i = 0; i < _initialPoolSize; i++)
             {
                 CreateNewAudioSource();
             }
+
+            // Play Main BGM
+            PlayBGM("Melon-Beat-End-Roll");
         }
 
         private AudioSource CreateNewAudioSource()
@@ -60,6 +73,30 @@ namespace Seoul
             source.spatialBlend = 0f; // 2D 사운드 (로컬 사용자 전용)
             _sfxSources.Add(source);
             return source;
+        }
+
+        public void PlayBGM(string clipName)
+        {
+            if (string.IsNullOrEmpty(clipName)) return;
+
+            if (!_clipCache.TryGetValue(clipName, out var clip))
+            {
+                clip = Resources.Load<AudioClip>($"sounds/{clipName}");
+                if (clip != null)
+                {
+                    _clipCache[clipName] = clip;
+                }
+                else
+                {
+                    Debug.LogWarning($"[SoundManager] BGM AudioClip not found in Resources: sounds/{clipName}");
+                    return;
+                }
+            }
+
+            if (_bgmSource.clip == clip && _bgmSource.isPlaying) return;
+
+            _bgmSource.clip = clip;
+            _bgmSource.Play();
         }
 
         public void PlaySFX(string clipName)
