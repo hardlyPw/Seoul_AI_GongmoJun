@@ -25,6 +25,12 @@ public class PrefabLineSpawner : MonoBehaviour
     [Tooltip("첫 번째 인스턴스의 local 시작 위치")]
     public Vector3 startOffset = Vector3.zero;
 
+    [Header("Base Transform")]
+    [Tooltip("모든 인스턴스의 기본 스케일. prefab 이 너무 작으면 큰 값 (예: 300) 입력.")]
+    public Vector3 baseScale = Vector3.one;
+    [Tooltip("모든 인스턴스의 기본 회전 (Euler 각). 가드레일처럼 진행방향에 맞춰야 할 때 사용.")]
+    public Vector3 baseRotation = Vector3.zero;
+
     [Header("선택 — 자연스러운 변화")]
     [Tooltip("매 인스턴스마다 z 축으로 ±이 값 만큼 랜덤 오프셋 (보도 폭 내 자연 배치)")]
     public float zJitter = 0f;
@@ -54,17 +60,16 @@ public class PrefabLineSpawner : MonoBehaviour
             if (zJitter > 0f) pos.z += Random.Range(-zJitter, zJitter);
             go.transform.localPosition = pos;
 
-            if (randomYRotation > 0f)
-            {
-                float yaw = Random.Range(-randomYRotation, randomYRotation);
-                go.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
-            }
+            float yawOffset = randomYRotation > 0f ? Random.Range(-randomYRotation, randomYRotation) : 0f;
+            go.transform.localRotation = Quaternion.Euler(
+                baseRotation.x,
+                baseRotation.y + yawOffset,
+                baseRotation.z);
 
+            float scaleFactor = 1f;
             if (randomScaleRange.x > 0f && (randomScaleRange.x != 1f || randomScaleRange.y != 1f))
-            {
-                float s = Random.Range(randomScaleRange.x, randomScaleRange.y);
-                go.transform.localScale = Vector3.one * s;
-            }
+                scaleFactor = Random.Range(randomScaleRange.x, randomScaleRange.y);
+            go.transform.localScale = baseScale * scaleFactor;
 
             Undo.RegisterCreatedObjectUndo(go, "Spawn Prefab Line");
         }
