@@ -24,6 +24,8 @@ namespace Seoul.Network.Game
         [Tooltip("true면 한 플레이어가 카페 진입 동안 한 번만 받을 수 있음 (퇴장 후 재진입 시 가능).")]
         [SerializeField] private bool onePickupPerVisit = true;
 
+        private const string GroundColliderName = "GroundCollider";
+
         private readonly Dictionary<PlayerController, Action> _handlers = new Dictionary<PlayerController, Action>();
         private readonly HashSet<PlayerController> _pickedThisVisit = new HashSet<PlayerController>();
 
@@ -82,6 +84,42 @@ namespace Seoul.Network.Game
                     col.size = s;
                 }
             }
+
+            EnsureGroundCollider(entryMin, entryMax, trigger);
+        }
+
+        private void EnsureGroundCollider(int entryMin, int entryMax, Transform trigger)
+        {
+            var floor = transform.Find(GroundColliderName);
+            if (floor == null)
+            {
+                var go = new GameObject(GroundColliderName);
+                go.transform.SetParent(transform, false);
+                go.hideFlags = HideFlags.DontSave;
+                floor = go.transform;
+            }
+
+            int groundLayer = LayerMask.NameToLayer("Ground");
+            floor.gameObject.layer = groundLayer >= 0 ? groundLayer : gameObject.layer;
+
+            floor.localPosition = new Vector3(0f, -0.05f, 0f);
+            floor.localRotation = Quaternion.identity;
+            floor.localScale = Vector3.one;
+
+            if (!floor.TryGetComponent<BoxCollider>(out var col))
+            {
+                col = floor.gameObject.AddComponent<BoxCollider>();
+            }
+
+            float length = 4f;
+            if (trigger != null && trigger.TryGetComponent<BoxCollider>(out var triggerCol))
+            {
+                length = Mathf.Max(length, triggerCol.size.x * Mathf.Abs(trigger.localScale.x));
+            }
+
+            col.isTrigger = false;
+            col.center = Vector3.zero;
+            col.size = new Vector3(length, 0.1f, LaneManager.Instance.GetLaneSpanZ(entryMin, entryMax));
         }
 
         // ── CafeInteriorTrigger가 호출하는 콜백 ───────────────────
