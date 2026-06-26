@@ -396,7 +396,7 @@ namespace Seoul.Network.Game
                     backWall.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
                 }
 
-                // NoEntry side zone — safe zone 영역에서 밖 lane → 출구 lane 진입 차단.
+                // BoundaryLock zone — safe zone 영역의 출구 lane 안/밖 경계 이동을 양방향 차단.
                 if (lm != null)
                 {
                     var noEntryGO = new GameObject("Exit_NoEntryZone");
@@ -407,7 +407,7 @@ namespace Seoul.Network.Game
                     neCol.isTrigger = true;
                     neCol.size = new Vector3(safeZoneLength, holeTriggerHeight, holeWidth + sideMarginBoth);
                     var neZone = noEntryGO.AddComponent<LaneRangeZone>();
-                    neZone.Mode = LaneRangeZone.BlockMode.NoEntry;
+                    neZone.Mode = LaneRangeZone.BlockMode.BoundaryLock;
                     neZone.MinLane = Mathf.Clamp(Mathf.Min(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
                     neZone.MaxLane = Mathf.Clamp(Mathf.Max(holeMinLane, holeMaxLane), 0, lm.LaneCount - 1);
                     neZone.UseMaxActiveWorldY = false;

@@ -13,12 +13,12 @@ ModelImporter:
       type: UnityEngine:Texture2D
       assembly: UnityEngine.CoreModule
       name: diffuse
-    second: {fileID: 2800000, guid: afcc7739df203be48a3fb617a0b2c2d5, type: 3}
+    second: {fileID: 2800000, guid: b094b2a99b5b05649bd427573f81b457, type: 3}
   - first:
       type: UnityEngine:Texture2D
       assembly: UnityEngine.CoreModule
       name: normal
-    second: {fileID: 2800000, guid: 3ff2ab914e6c75149bc7dd8c8cde0a24, type: 3}
+    second: {fileID: 2800000, guid: a88f41b7922ca8946a535a3c5269d08e, type: 3}
   materials:
     materialImportMode: 2
     materialName: 0
