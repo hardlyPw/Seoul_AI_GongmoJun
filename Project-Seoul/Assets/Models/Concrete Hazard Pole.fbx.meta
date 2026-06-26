@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 329acff02569534438f763208a3620f3
+guid: e727e8938d1b0fa46a2d2ea997ed8ff0
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
@@ -8,17 +8,17 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: material_0
-    second: {fileID: 2100000, guid: 17dd41c6f8e39fb40a77ca993f55cf19, type: 2}
+    second: {fileID: 2100000, guid: 8373cbf6b1201a74492d81e58fd7a191, type: 2}
   - first:
       type: UnityEngine:Texture2D
       assembly: UnityEngine.CoreModule
       name: diffuse
-    second: {fileID: 2800000, guid: b094b2a99b5b05649bd427573f81b457, type: 3}
+    second: {fileID: 2800000, guid: ef6a29f0294bbc94abdf24c45f03c163, type: 3}
   - first:
       type: UnityEngine:Texture2D
       assembly: UnityEngine.CoreModule
       name: normal
-    second: {fileID: 2800000, guid: a88f41b7922ca8946a535a3c5269d08e, type: 3}
+    second: {fileID: 2800000, guid: 979d045c1462a0345af1a509b6a25cb0, type: 3}
   materials:
     materialImportMode: 2
     materialName: 0
