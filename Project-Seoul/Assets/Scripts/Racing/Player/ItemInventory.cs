@@ -33,6 +33,14 @@ public class ItemInventory : MonoBehaviour
     private void UseItem()
     {
         if (_heldItem == null) return;
+        if (TryGetComponent<Unity.Netcode.NetworkObject>(out var no))
+        {
+            if (no.IsOwner) Seoul.SoundManager.Instance.PlaySFX("use_item");
+        }
+        else
+        {
+            Seoul.SoundManager.Instance.PlaySFX("use_item");
+        }
         _heldItem.Apply(_player);
         _heldItem = null;
     }

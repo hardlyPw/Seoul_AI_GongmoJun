@@ -559,6 +559,14 @@ public class PlayerController : MonoBehaviour
             _velocity.y = jumpForce;
             _isGrounded = false;
             _jumpBufferTimer = 0f;
+            if (TryGetComponent<Unity.Netcode.NetworkObject>(out var no))
+            {
+                if (no.IsOwner) Seoul.SoundManager.Instance.PlaySFX("jump");
+            }
+            else
+            {
+                Seoul.SoundManager.Instance.PlaySFX("jump");
+            }
             ChangeState(JumpState);
         }
     }

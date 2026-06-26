@@ -23,6 +23,7 @@ namespace Seoul.Network.Game
 
         [Header("QTE UI (Optional)")]
         [SerializeField] private TMP_Text qteStateText;
+        [SerializeField] private TMP_FontAsset koreanFont; // 한글 폰트 에셋 직접 할당 슬롯
 
         private float _refreshTimer;
         private readonly List<NetworkPlayer> _sorted = new();
@@ -75,12 +76,49 @@ namespace Seoul.Network.Game
                     rt.sizeDelta = new Vector2(500f, 300f);
 
                     var tmp = qteObj.AddComponent<TextMeshProUGUI>();
+                    
+                    // [한글 폰트 스마트 바인딩 로직]
+                    if (koreanFont == null)
+                    {
+#if UNITY_EDITOR
+                        // 에디터 환경일 경우, 인스펙터 할당이 누락되었어도 프로젝트 내 GmarketSans 한글 폰트를 다이렉트 로드하여 자동 해결
+                        koreanFont = UnityEditor.AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/fonts/GmarketSansTTFBold SDF.asset");
+                        if (koreanFont != null) Debug.Log("[RaceHUDController] AssetDatabase를 통해 GmarketSansTTFBold SDF 한글 폰트 자동 로드 완료!");
+#endif
+                    }
+
+                    if (koreanFont != null)
+                    {
+                        tmp.font = koreanFont;
+                        Debug.Log("[RaceHUDController] Korean Font (GmarketSans) 에셋 최종 적용 완료!");
+                    }
+                    else
+                    {
+                        // 1. 씬 내의 모든 텍스트 중 기본 폰트(Liberation)가 아닌 한글 지원 폰트(malgun, Gmarket 등)를 자동 탐색
+                        foreach (var anyText in FindObjectsByType<TMP_Text>(FindObjectsSortMode.None))
+                        {
+                            if (anyText.font != null && !anyText.font.name.Contains("Liberation"))
+                            {
+                                tmp.font = anyText.font;
+                                Debug.Log($"[RaceHUDController] 씬 내에서 한글 지원 추정 폰트 자동 발견 및 적용: {anyText.font.name}");
+                                break;
+                            }
+                        }
+                        
+                        // 2. 그래도 못 찾았다면 myScoreText.font 적용 후 인스펙터 할당 안내 로그 출력
+                        if (tmp.font == null || tmp.font.name.Contains("Liberation"))
+                        {
+                            if (myScoreText != null) tmp.font = myScoreText.font;
+                            Debug.LogWarning("[RaceHUDController] 현재 씬의 모든 UI가 영문 기본 폰트(LiberationSans)를 사용 중이어서 한글이 깨질 수 있습니다. RaceHUDController 인스펙터의 'Korean Font' 슬롯에 한글 폰트(GmarketSans SDF 등)를 넣어주세요!");
+                        }
+                    }
+
                     tmp.fontSize = 36f;
                     tmp.alignment = TextAlignmentOptions.Center;
                     tmp.overflowMode = TextOverflowModes.Overflow;
                     tmp.text = "";
                     qteStateText = tmp;
-                    Debug.Log("[RaceHUDController] QTE 전용 UI 텍스트 캔버스 중앙 상단에 동적 생성 완료!");
+                    Debug.Log("[RaceHUDController] QTE 전용 UI 텍스트 캔버스 중앙 상단에 동적 생성 완료 (한글 폰트 적용)!");
                 }
             }
 

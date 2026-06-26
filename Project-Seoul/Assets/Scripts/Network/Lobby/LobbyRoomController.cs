@@ -1,4 +1,4 @@
-using System.Collections;
+ï»¿using System.Collections;
 using TMPro;
 using Unity.Netcode;
 using UnityEngine;
@@ -40,8 +40,8 @@ namespace Seoul.Network.Lobby
                 yield break;
             }
 
-            startGameButton.onClick.AddListener(OnStartClicked);
-            leaveButton.onClick.AddListener(OnLeaveClicked);
+            startGameButton.onClick.AddListener(() => { SoundManager.Instance.PlaySFX("Ui_button_click1"); OnStartClicked(); });
+            leaveButton.onClick.AddListener(() => { SoundManager.Instance.PlaySFX("Ui_button_click1"); OnLeaveClicked(); });
 
             bool isHost = NetworkManager.Singleton != null && NetworkManager.Singleton.IsHost;
             startGameButton.gameObject.SetActive(isHost);
@@ -62,7 +62,7 @@ namespace Seoul.Network.Lobby
             var session = LobbyManager.Instance?.CurrentSession;
             if (session == null) return;
 
-            if (roomCodeLabel != null) roomCodeLabel.text = $"ÃÊ´ëÄÚµå: {session.Code}";
+            if (roomCodeLabel != null) roomCodeLabel.text = $"ì´ˆëŒ€ì½”ë“œ: {session.Code}";
 
             var players = session.Players;
             for (int i = 0; i < playerSlotLabels.Length; i++)
