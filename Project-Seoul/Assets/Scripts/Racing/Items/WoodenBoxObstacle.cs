@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using Unity.Netcode;
 
 public class WoodenBoxObstacle : NetworkBehaviour
@@ -20,11 +20,13 @@ public class WoodenBoxObstacle : NetworkBehaviour
                 return;
             }
 
-            // 분기 2: 아이템 대시(킥보드, 택시) 상태로 상자에 정면 부딪혔을 때 (상자 파괴 및 아이템 즉시 지급)
-            if (inventory.IsItemDashing)
+            // 분기 2: 일반 대시(player.IsDashing) 또는 아이템 대시(inventory.IsItemDashing) 상태로 상자에 정면 부딪혔을 때 (상자 파괴 및 아이템 즉시 지급)
+            if (inventory.IsItemDashing || player.IsDashing)
             {
-                if (IsServer)
+                if (NetworkObject.IsSpawned)
                 {
+                    if (!IsServer) return; // 서버가 처리하여 클라이언트로 Despawn 및 Rpc 동기화
+
                     // 내 인벤토리가 완전히 비어있을 때만 순위 기반 보상 즉시 지급
                     if (inventory.currentItem.Value == ItemType.None)
                     {
@@ -32,6 +34,16 @@ public class WoodenBoxObstacle : NetworkBehaviour
                         inventory.TryPickup(item);
                     }
                     GetComponent<NetworkObject>().Despawn(); // 상자 파괴 처리
+                }
+                else
+                {
+                    // 로컬 씬 (싱글플레이 및 2~3스테이지 등) 직접 처리
+                    if (inventory.currentItem.Value == ItemType.None)
+                    {
+                        ItemType item = NetworkItemBox.GetRandomItemByRank(other.transform.position.x);
+                        inventory.TryPickupLocal(item);
+                    }
+                    gameObject.SetActive(false); // 상자 파괴 처리
                 }
             }
             // 분기 3: 대시 상태가 아닌데 정면 충돌했을 때 (일반 장애물 충돌과 동일하게 강제 기절)
