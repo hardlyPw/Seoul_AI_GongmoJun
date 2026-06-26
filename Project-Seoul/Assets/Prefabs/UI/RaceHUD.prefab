@@ -65,7 +65,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Weather: '
+  m_text: 'Weather:'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -131,7 +131,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 0, y: 0, z: 0, w: 0}
+  m_margin: {x: 0, y: 0, z: -305.60706, w: 0}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -724,7 +724,11 @@ MonoBehaviour:
   - {fileID: 5103610233048598064}
   - {fileID: 4164505954760473740}
   weatherText: {fileID: 7701865588069696010}
+  staminaBarAnchoredPosition: {x: 40, y: 46}
+  staminaBarSize: {x: 480, y: 34}
   refreshInterval: 0.2
+  qteStateText: {fileID: 0}
+  koreanFont: {fileID: 0}
 --- !u!1 &6918097516674587488
 GameObject:
   m_ObjectHideFlags: 0
