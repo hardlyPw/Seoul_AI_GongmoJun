@@ -434,9 +434,14 @@ namespace Seoul.Network.Game
                     if (koreanFont == null)
                     {
 #if UNITY_EDITOR
-                        // 에디터 환경일 경우, 인스펙터 할당이 누락되었어도 프로젝트 내 GmarketSans 한글 폰트를 다이렉트 로드하여 자동 해결
+                        // 에디터 환경: AssetDatabase를 통해 GmarketSans 한글 폰트 다이렉트 로드
                         koreanFont = UnityEditor.AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/fonts/GmarketSansTTFBold SDF.asset");
                         if (koreanFont != null) Debug.Log("[RaceHUDController] AssetDatabase를 통해 GmarketSansTTFBold SDF 한글 폰트 자동 로드 완료!");
+#else
+                        // 빌드 환경: Resources 폴더 내 로드 시도 (만약 폰트가 Resources 폴더에 있을 경우를 대비한 폴백)
+                        koreanFont = Resources.Load<TMP_FontAsset>("GmarketSansTTFBold SDF");
+                        if (koreanFont == null) koreanFont = Resources.Load<TMP_FontAsset>("Fonts/GmarketSansTTFBold SDF");
+                        if (koreanFont != null) Debug.Log("[RaceHUDController] Resources.Load를 통해 GmarketSans 한글 폰트 자동 로드 완료!");
 #endif
                     }
 
@@ -458,11 +463,11 @@ namespace Seoul.Network.Game
                             }
                         }
                         
-                        // 2. 그래도 못 찾았다면 myScoreText.font 적용 후 인스펙터 할당 안내 로그 출력
+                        // 2. 그래도 못 찾았다면 myScoreText.font 적용 후 빌드 환경을 위한 인스펙터 할당 필수 안내 로그 출력
                         if (tmp.font == null || tmp.font.name.Contains("Liberation"))
                         {
                             if (myScoreText != null) tmp.font = myScoreText.font;
-                            Debug.LogWarning("[RaceHUDController] 현재 씬의 모든 UI가 영문 기본 폰트(LiberationSans)를 사용 중이어서 한글이 깨질 수 있습니다. RaceHUDController 인스펙터의 'Korean Font' 슬롯에 한글 폰트(GmarketSans SDF 등)를 넣어주세요!");
+                            Debug.LogWarning("[RaceHUDController] [빌드 환경 한글 깨짐 주의] 현재 씬에 할당된 한글 폰트가 없어 기본 영문 폰트(LiberationSans)가 적용되었습니다. 빌드 전 반드시 RaceHUDController 인스펙터의 'Korean Font' 슬롯에 한글 폰트 에셋(GmarketSansTTFBold SDF)을 연결하고 빌드해주세요!");
                         }
                     }
 
