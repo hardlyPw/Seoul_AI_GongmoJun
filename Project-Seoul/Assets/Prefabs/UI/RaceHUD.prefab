@@ -728,7 +728,7 @@ MonoBehaviour:
   staminaBarSize: {x: 480, y: 34}
   refreshInterval: 0.2
   qteStateText: {fileID: 0}
-  koreanFont: {fileID: 0}
+  koreanFont: {fileID: 11400000, guid: c9ff45604264e7f4ca074f6161e78c9c, type: 2}
 --- !u!1 &6918097516674587488
 GameObject:
   m_ObjectHideFlags: 0
