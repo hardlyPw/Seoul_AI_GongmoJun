@@ -14090,11 +14090,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LaneManager
   laneZPositions:
   - 3
-  - 2
-  - 1
-  - 0
-  - -1
-  - -2
+  - 1.8
+  - 0.6
+  - -0.6
+  - -1.8
   - -3
 --- !u!114 &1512610475
 MonoBehaviour:
@@ -19033,12 +19032,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LaneManager
   laneZPositions:
-  - 5
-  - 4
   - 3
-  - 2
-  - 1
-  - 0
+  - 1.8
+  - 0.6
+  - -0.6
+  - -1.8
+  - -3
 --- !u!4 &2076094367
 Transform:
   m_ObjectHideFlags: 0

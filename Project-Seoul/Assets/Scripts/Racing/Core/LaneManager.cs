@@ -5,7 +5,7 @@ public class LaneManager : MonoBehaviour
     public static LaneManager Instance { get; private set; }
 
     // Z축 기준 라인 위치 (5=화면 위, 0=화면 아래)
-    [SerializeField] private float[] laneZPositions = { 5f, 4f, 3f, 2f, 1f, 0f };
+    [SerializeField] private float[] laneZPositions = { 3f, 1.8f, 0.6f, -0.6f, -1.8f, -3f };
 
     public int   LaneCount   => laneZPositions.Length;
     public float LaneSpacing => laneZPositions.Length >= 2
