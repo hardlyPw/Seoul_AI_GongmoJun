@@ -22135,7 +22135,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Seoul.Network.Game.WeatherGimmick
   ShowTopMostFoldoutHeaderGroup: 1
   allowedWeathers: 
-  useForcedWeather: 1
+  useForcedWeather: 0
   forcedWeather: 2
   Current:
     UpdateTraits:
