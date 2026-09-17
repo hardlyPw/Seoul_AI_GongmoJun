@@ -2,7 +2,9 @@
 
 Relay 세션으로 참가자를 연결하고, 씬 로딩과 경기 상태를 동기화하는 Unity 멀티플레이 러닝 프로토타입.
 
-> 문서 검토본. 기본 최대 4인 설정은 코드상 구성값이며 실제 동시 플레이 시험 결과와 구별합니다.
+**4인 팀 · 달리기 메커니즘과 멀티플레이 공통부 구현**
+
+개발 커밋: 2026년 5–6월. 기본 최대 4인 설정은 코드상 구성값입니다.
 
 ## Why
 
@@ -47,7 +49,7 @@ flowchart TD
 
 ## Results
 
-세션·경기 상태·씬/결과 전환 코드와 팀 통합 문서가 있습니다. 공모전 제출/수상, 실제 4인 시연, latency·운영비는 [NEEDS VERIFICATION]입니다. 이번 문서 감사에서는 Unity 실행을 검증하지 않았습니다.
+자동 전진·대시·충돌 처리를 상태 머신으로 나누고, 세션 참여부터 씬 로딩·플레이어 생성·경기 결과까지 이어지는 공통부를 구현했습니다. 팀원이 각 stage를 연결할 수 있도록 통합 가이드를 남겼습니다. 이 문서의 검증 범위는 소스·커밋·설계 문서이며, 실행 성능이나 공모전 성과 수치는 제시하지 않습니다.
 
 ## Getting Started
 
@@ -56,7 +58,7 @@ flowchart TD
 3. 본인 또는 팀이 승인한 UGS 프로젝트 연결과 서비스 설정을 완료합니다.
 4. Bootstrap/Title에서 host 생성·code 참여 흐름을 시작합니다. 실제 씬·prefab 등록은 프로젝트 설정 및 기존 문서를 확인합니다.
 
-전체 체크아웃에는 에셋이 필요합니다. 문서 감사용 sparse checkout은 게임 실행 배포본이 아닙니다.
+실행에는 코드와 함께 저장소의 Unity 에셋·프로젝트 설정을 받아야 합니다.
 
 ## Project Structure
 
@@ -79,4 +81,4 @@ flowchart TD
 ## Links
 
 - [기존 아키텍처·팀 가이드](MULTIPLAYER_ARCHITECTURE.md)
-- Portfolio / Demo: [NEEDS VERIFICATION]
+- [담당 구현 커밋](https://github.com/hardlyPw/Seoul_AI_GongmoJun/commit/56955a3)
